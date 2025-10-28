@@ -25,7 +25,14 @@ export async function POST(request: Request) {
       )
     }
 
+    console.log('Attempting to fetch transcript for URL:', url)
     const result = await getTranscript(url)
+    console.log('Successfully fetched transcript:', { 
+      segmentsCount: result.segments.length,
+      transcriptLength: result.transcript.length,
+      language: result.language 
+    })
+    
     return NextResponse.json({
       success: true,
       data: result,
