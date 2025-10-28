@@ -66,10 +66,15 @@ async function retryWithBackoff<T>(
 function buildYouTubeHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
-    'Accept-Language': 'en,en-US;q=0.9',
-    Accept: 'text/html,application/json;q=0.9',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+    Accept: '*/*',
+    'Accept-Encoding': 'gzip, deflate, br',
+    Origin: 'https://www.youtube.com',
     Referer: 'https://www.youtube.com/',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
   }
 
   const cookies = process.env.YOUTUBE_COOKIES?.trim()
@@ -85,11 +90,16 @@ type TimedTextTrack = {
 
 async function fetchTimedtextTrackList(videoId: string): Promise<TimedTextTrack[]> {
   const url = `https://www.youtube.com/api/timedtext?type=list&v=${encodeURIComponent(videoId)}&hl=en`
+  console.log('[Timedtext] Fetching track list for video:', videoId)
   const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })
+  console.log('[Timedtext] Track list response status:', res.status)
   if (!res.ok) {
+    const errorText = await res.text().catch(() => 'no response body')
+    console.error('[Timedtext] Track list failed:', { status: res.status, body: errorText })
     throw new TranscriptError(`Timedtext list failed: ${res.status}`, 'FETCH_ERROR')
   }
   const xml = await res.text()
+  console.log('[Timedtext] Track list XML length:', xml.length)
   // Lightweight XML attribute parsing for <track ... /> elements
   const tracks: TimedTextTrack[] = []
   const trackTagRegex = /<track\b([^>]*?)\/>/g
@@ -136,7 +146,9 @@ async function fetchTimedtextJson3(videoId: string, track: TimedTextTrack) {
   if (track.kind) params.set('kind', track.kind)
   const url = `https://www.youtube.com/api/timedtext?${params.toString()}`
 
+  console.log('[Timedtext] Fetching JSON3 for lang:', track.langCode)
   const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })
+  console.log('[Timedtext] JSON3 response status:', res.status)
   if (!res.ok) return null
 
   const contentType = res.headers.get('content-type') || ''
@@ -247,20 +259,30 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
   }
 
   try {
-    console.log('Fetching transcript for video ID:', videoId)
+    console.log('[Transcript] Starting fetch for video ID:', videoId)
+    console.log('[Transcript] Environment:', {
+      nodeEnv: process.env.NODE_ENV,
+      vercel: process.env.VERCEL,
+      region: process.env.VERCEL_REGION,
+    })
+
     // Primary: library fetch with retry
     let libItems: any[] | null = null
     try {
+      console.log('[Transcript] Attempting library fetch with retry...')
       libItems = await retryWithBackoff(
         async () => YoutubeTranscript.fetchTranscript(videoId),
         3,
         1000
       )
+      console.log('[Transcript] Library fetch successful, items:', libItems?.length || 0)
     } catch (fetchError: any) {
-      console.log('YouTube transcript library failed, enabling timedtext fallback', {
+      console.error('[Transcript] Library fetch failed:', {
         message: fetchError?.message,
         name: fetchError?.name,
+        stack: fetchError?.stack,
       })
+      console.log('[Transcript] Enabling timedtext fallback...')
     }
 
     let segments: TranscriptSegment[] | null = null
@@ -295,8 +317,14 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
     }
 
     if (!segments || !segments.length) {
+      console.error('[Transcript] No segments found for video:', videoId)
       throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')
     }
+
+    console.log('[Transcript] Successfully fetched transcript:', {
+      segmentCount: segments.length,
+      language,
+    })
 
     const fullTranscript = segments
       .map((s) => s.text)
