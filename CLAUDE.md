@@ -38,10 +38,12 @@ npx vitest tests/health.test.ts
 - **Next.js App Router**: Uses the `app/` directory structure (Next.js 14)
 - **API Routes**: Server-side logic in `app/api/` directory
   - `app/api/health/route.ts`: Health check endpoint (GET)
-  - `app/api/transcript/route.ts`: Transcript extraction endpoint (POST)
+  - `app/api/transcript/route.ts`: Transcript extraction endpoint with retry logic (POST)
+  - `app/api/download/route.ts`: Video download link fetching endpoint (POST)
 - **Shared Libraries**: Utility functions in `lib/` directory
   - `lib/youtube.ts`: YouTube URL validation and video ID extraction
-  - `lib/transcript.ts`: Transcript fetching logic using YouTube's timedtext API
+  - `lib/transcript.ts`: Transcript fetching logic with automatic retry mechanism
+  - `lib/health.ts`: Health check logic
 - **Tests**: Located in `tests/` directory, run with Vitest
 
 ### Path Aliases
@@ -67,7 +69,8 @@ This is configured in:
    - **Important**: This route uses `export const runtime = 'nodejs'` to ensure Node.js runtime (required for network requests)
 4. [lib/transcript.ts](lib/transcript.ts) calls `getTranscript()` which:
    - Extracts video ID using `extractVideoId()`
-   - Calls `YoutubeTranscript.fetchTranscript()` from `@danielxceron/youtube-transcript` package
+   - Calls `YoutubeTranscript.fetchTranscript()` with automatic retry logic (3 attempts with exponential backoff)
+   - Retry delays: 1s, 2s, 4s between attempts
    - Decodes HTML entities in transcript text (e.g., `&amp;#39;` → `'`)
    - Converts segments to standard format with millisecond timestamps
    - Returns full transcript text and individual segments
@@ -76,6 +79,18 @@ This is configured in:
    - `segments`: Array of `{ text, duration, offset }` objects
    - `videoId`: Extracted video ID
    - `language`: Caption language from YouTube
+
+### Video Download Flow
+
+1. User clicks "Download Video" button and selects quality (360p, 720p, 1080p)
+2. Frontend POSTs to `/api/download` with video URL and quality
+3. [app/api/download/route.ts](app/api/download/route.ts):
+   - Validates URL and extracts video ID
+   - Calls YTStream API (RapidAPI) to get download link
+   - Returns download URL, video title, and thumbnail
+4. Frontend opens download link in new tab
+5. **Setup Required**: Add `RAPIDAPI_KEY` to `.env.local` file
+   - Get your free API key from [RapidAPI](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos)
 
 ### Error Handling
 
@@ -141,12 +156,29 @@ Video IDs are always 11 characters: alphanumeric, underscore, or hyphen.
 - Form input state
 - Loading state
 - Error messages
-- Transcript display
+- Transcript display (with/without timestamps)
+- Video player embed
+- Quality dropdown for video download
+- Toast notifications
 
-The page includes copy-to-clipboard and download-as-txt functionality.
+**Key Features**:
+- **Copy to Clipboard**: Copies current transcript format (with or without timestamps)
+- **Download as Text**: Downloads transcript in current format
+- **Toggle Timestamps**: Real-time toggle between long text format and timestamped segments
+- **Video Player**: Embedded YouTube player
+- **Video Download**: Quality selector (360p, 720p, 1080p) with API-based download
+- **Toast Notifications**: User feedback for actions (success, error, info)
 
 ### Important Implementation Details
 
 **YouTube Transcript Package**: Uses `@danielxceron/youtube-transcript` instead of the original `youtube-transcript` package. The original package (v1.2.1) was returning empty arrays and is outdated. The fork by @danielxceron includes a fallback system for improved reliability.
 
-**Node.js Runtime Requirement**: The `/api/transcript` route MUST use Node.js runtime (`export const runtime = 'nodejs'`) instead of Edge runtime, as the transcript package requires full Node.js network access to fetch from YouTube.
+**Node.js Runtime Requirement**: Both `/api/transcript` and `/api/download` routes MUST use Node.js runtime (`export const runtime = 'nodejs'`) instead of Edge runtime, as the packages require full Node.js network access.
+
+**Retry Logic**: The transcript fetching includes automatic retry with exponential backoff to handle intermittent network failures. This improves reliability when YouTube's servers are slow to respond.
+
+**Environment Variables**: The video download feature requires a RapidAPI key:
+- Create a `.env.local` file in the project root
+- Add: `RAPIDAPI_KEY=your_rapidapi_key_here`
+- Get a free key from [RapidAPI YTStream](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos)
+- The free tier includes limited requests per month

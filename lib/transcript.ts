@@ -24,6 +24,44 @@ export class TranscriptError extends Error {
   }
 }
 
+/**
+ * Retry helper function with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: any
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+
+      // Don't retry on these specific errors
+      if (error instanceof TranscriptError && error.code === 'INVALID_URL') {
+        throw error
+      }
+
+      // If this was the last attempt, throw the error
+      if (attempt === maxRetries - 1) {
+        throw error
+      }
+
+      // Calculate delay with exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt)
+      console.log(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`)
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError
+}
+
 export async function getTranscript(url: string): Promise<TranscriptResult> {
   const videoId = extractVideoId(url)
   if (!videoId) {
@@ -33,12 +71,15 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
   try {
     console.log('Fetching transcript for video ID:', videoId)
 
-    // Fetch transcript (tries to get any available language)
+    // Fetch transcript with retry logic (tries to get any available language)
     let transcriptItems
     try {
-      transcriptItems = await YoutubeTranscript.fetchTranscript(videoId)
-      console.log('Raw transcript response:', transcriptItems)
-      console.log('Transcript type:', typeof transcriptItems, Array.isArray(transcriptItems))
+      transcriptItems = await retryWithBackoff(async () => {
+        const items = await YoutubeTranscript.fetchTranscript(videoId)
+        console.log('Raw transcript response:', items)
+        console.log('Transcript type:', typeof items, Array.isArray(items))
+        return items
+      }, 3, 1000)
     } catch (fetchError: any) {
       console.error('YouTube transcript API error:', fetchError)
       throw new TranscriptError(

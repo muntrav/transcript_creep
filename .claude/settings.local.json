@@ -12,7 +12,14 @@
       "Bash(npm uninstall:*)",
       "Bash(npm install:*)",
       "Bash(python:*)",
-      "Bash(npx prettier:*)"
+      "Bash(npx prettier:*)",
+      "Bash(timeout 10 bash:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill /F /PID 18400)",
+      "Bash(taskkill //F //PID 18400)",
+      "Bash(timeout 5 cmd //c \"for /L %i in (1,1,10) do (curl -s http://localhost:3000 >nul 2>&1 && echo Server ready && exit || timeout /t 1 /nobreak >nul)\")",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

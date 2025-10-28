@@ -3,12 +3,18 @@
 @tailwind utilities;
 
 html,
-body,
-#__next {
+body {
   height: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
