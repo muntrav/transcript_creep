@@ -4,6 +4,8 @@ import { getTranscript, TranscriptError } from '@/lib/transcript'
 
 // Force this route to use Node.js runtime instead of Edge
 export const runtime = 'nodejs'
+// Prefer a US region to avoid EU consent interstitials
+export const preferredRegion = ['iad1']
 
 type TranscriptRequest = {
   videoUrl?: string

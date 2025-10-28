@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
+import Image from 'next/image'
 import {
   Container,
   Box,
@@ -200,17 +201,33 @@ export default function HomePage() {
     <Box sx={{ minHeight: '100vh' }}>
       {/* App Bar */}
       <AppBar position="static" elevation={0} sx={{ bgcolor: 'primary.main' }}>
-        <Toolbar>
-          <PlayIcon sx={{ mr: 2 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700 }}>
-            Transcriptcreep
-          </Typography>
-          <ThemeToggle />
+        <Toolbar sx={{ position: 'relative', justifyContent: 'center', minHeight: 88 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <IconButton
+              aria-label="Home"
+              onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}
+              edge="start"
+              sx={{ p: 0 }}
+            >
+              <Image src="/logo.png" alt="Transcriptcreep logo" width={72} height={72} priority />
+            </IconButton>
+            <Typography
+              variant="h6"
+              component="div"
+              onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}
+              sx={{ fontWeight: 700, userSelect: 'none', cursor: 'pointer' }}
+            >
+              Transcriptcreep
+            </Typography>
+          </Box>
+          <Box sx={{ position: 'absolute', right: 16 }}>
+            <ThemeToggle />
+          </Box>
         </Toolbar>
       </AppBar>
 
       {/* Main Content */}
-      <Container maxWidth="xl" sx={{ py: 4 }}>
+      <Container maxWidth="md" sx={{ py: 8 }}>
         {/* URL Input Form */}
         <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 3 }}>
           <form onSubmit={handleSubmit}>
@@ -386,6 +403,7 @@ export default function HomePage() {
                     flexGrow: 1,
                     overflow: 'auto',
                     maxHeight: { xs: '400px', lg: 'calc(100vh - 400px)' },
+                    pb: 1,
                   }}
                 >
                   {showTimestamps ? (
