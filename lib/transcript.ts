@@ -85,11 +85,11 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
         1000
       )
     } catch (fetchError: any) {
-    console.log('YouTube transcript API error:', {
+      console.log('YouTube transcript API error:', {
         error: fetchError,
         message: fetchError.message,
         stack: fetchError.stack,
-        name: fetchError.name
+        name: fetchError.name,
       })
       throw new TranscriptError(
         fetchError.message || 'Failed to fetch transcript from YouTube',
