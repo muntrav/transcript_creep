@@ -55,7 +55,7 @@ async function retryWithBackoff<T>(
       console.log(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`)
 
       // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, delay))
+      await new Promise((resolve) => setTimeout(resolve, delay))
     }
   }
 
@@ -74,12 +74,16 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
     // Fetch transcript with retry logic (tries to get any available language)
     let transcriptItems
     try {
-      transcriptItems = await retryWithBackoff(async () => {
-        const items = await YoutubeTranscript.fetchTranscript(videoId)
-        console.log('Raw transcript response:', items)
-        console.log('Transcript type:', typeof items, Array.isArray(items))
-        return items
-      }, 3, 1000)
+      transcriptItems = await retryWithBackoff(
+        async () => {
+          const items = await YoutubeTranscript.fetchTranscript(videoId)
+          console.log('Raw transcript response:', items)
+          console.log('Transcript type:', typeof items, Array.isArray(items))
+          return items
+        },
+        3,
+        1000
+      )
     } catch (fetchError: any) {
       console.error('YouTube transcript API error:', fetchError)
       throw new TranscriptError(

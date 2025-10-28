@@ -14,18 +14,12 @@ export async function POST(request: NextRequest) {
     const { videoUrl, quality } = body
 
     if (!videoUrl) {
-      return NextResponse.json(
-        { success: false, error: 'Video URL is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'Video URL is required' }, { status: 400 })
     }
 
     const videoId = extractVideoId(videoUrl)
     if (!videoId) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid YouTube URL' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'Invalid YouTube URL' }, { status: 400 })
     }
 
     const rapidApiKey = process.env.RAPIDAPI_KEY
@@ -35,7 +29,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'API key not configured. Please add RAPIDAPI_KEY to your .env.local file'
+          error: 'API key not configured. Please add RAPIDAPI_KEY to your .env.local file',
         },
         { status: 500 }
       )
@@ -71,7 +65,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'Failed to fetch download link',
-          details: response.status === 429 ? 'Rate limit exceeded' : errorText
+          details: response.status === 429 ? 'Rate limit exceeded' : errorText,
         },
         { status: response.status }
       )
@@ -94,7 +88,7 @@ export async function POST(request: NextRequest) {
       const qualityMap: Record<string, string[]> = {
         '360': ['360p', 'medium'],
         '720': ['720p', 'hd720'],
-        '1080': ['1080p', 'hd1080']
+        '1080': ['1080p', 'hd1080'],
       }
 
       const qualityLabels = qualityMap[quality] || []
@@ -102,7 +96,7 @@ export async function POST(request: NextRequest) {
       // IMPORTANT: Use formats (combined video+audio) instead of adaptiveFormats (video-only)
       // adaptiveFormats contain video-only streams without audio
       selectedFormat = data.formats?.find((f: any) =>
-        qualityLabels.some(ql => f.qualityLabel?.toLowerCase().includes(ql.toLowerCase()))
+        qualityLabels.some((ql) => f.qualityLabel?.toLowerCase().includes(ql.toLowerCase()))
       )
     }
 
@@ -118,7 +112,7 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'No download link available for this video',
-          availableFormats: data.formats?.map((f: any) => f.qualityLabel) || []
+          availableFormats: data.formats?.map((f: any) => f.qualityLabel) || [],
         },
         { status: 500 }
       )

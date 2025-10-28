@@ -162,6 +162,7 @@ Video IDs are always 11 characters: alphanumeric, underscore, or hyphen.
 - Toast notifications
 
 **Key Features**:
+
 - **Copy to Clipboard**: Copies current transcript format (with or without timestamps)
 - **Download as Text**: Downloads transcript in current format
 - **Toggle Timestamps**: Real-time toggle between long text format and timestamped segments
@@ -178,6 +179,7 @@ Video IDs are always 11 characters: alphanumeric, underscore, or hyphen.
 **Retry Logic**: The transcript fetching includes automatic retry with exponential backoff to handle intermittent network failures. This improves reliability when YouTube's servers are slow to respond.
 
 **Environment Variables**: The video download feature requires a RapidAPI key:
+
 - Create a `.env.local` file in the project root
 - Add: `RAPIDAPI_KEY=your_rapidapi_key_here`
 - Get a free key from [RapidAPI YTStream](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos)
