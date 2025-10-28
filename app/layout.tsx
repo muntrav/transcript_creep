@@ -3,7 +3,7 @@ import React from 'react'
 
 export const metadata = {
   title: 'Transcriptcreep',
-  description: 'Extract and view YouTube transcripts'
+  description: 'Extract and view YouTube transcripts',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

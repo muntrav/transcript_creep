@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server'
+import { validateYouTubeUrl } from '@/lib/youtube'
+import { getTranscript, TranscriptError } from '@/lib/transcript'
+
+// Force this route to use Node.js runtime instead of Edge
+export const runtime = 'nodejs'
 
 type TranscriptRequest = {
   videoUrl?: string
@@ -7,27 +12,48 @@ type TranscriptRequest = {
 export async function POST(request: Request) {
   try {
     const body: TranscriptRequest = await request.json()
-    const url = body.videoUrl
-    if (!url) {
-      return NextResponse.json({ success: false, error: 'videoUrl is required' }, { status: 400 })
+    const url = body.videoUrl ?? ''
+
+    const validation = validateYouTubeUrl(url)
+    if (!validation.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: validation.error,
+        },
+        { status: 400 }
+      )
     }
 
-    // Placeholder: extract videoId and call transcript service here.
-    // For now, return a mock response.
-    const videoId = 'mock-id'
-    const transcript = 'Transcript extraction placeholder for: ' + url
-
+    const result = await getTranscript(url)
     return NextResponse.json({
       success: true,
-      data: {
-        transcript,
-        videoId,
-        videoTitle: 'Placeholder Title',
-        language: 'en',
-        isGenerated: true
-      }
+      data: result,
     })
-  } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message ?? String(err) }, { status: 500 })
+  } catch (error: unknown) {
+    // Handle known transcript errors
+    if (error instanceof TranscriptError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          code: error.code,
+        },
+        {
+          status: error.code === 'INVALID_URL' ? 400 : error.code === 'NO_TRANSCRIPT' ? 404 : 500,
+        }
+      )
+    }
+
+    // Log and return generic error for unknown issues
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'An unexpected error occurred',
+        code: 'UNKNOWN_ERROR',
+      },
+      { status: 500 }
+    )
   }
 }

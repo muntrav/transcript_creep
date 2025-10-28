@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getHealth } from '../app/api/health/route'
+import { getHealth } from '@/lib/health'
 
 describe('health helper', () => {
   it('returns status healthy and timestamp', () => {

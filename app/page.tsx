@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import React, { useState } from 'react'
 
 export default function HomePage() {
@@ -17,12 +17,22 @@ export default function HomePage() {
       const res = await fetch('/api/transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl: url })
+        body: JSON.stringify({ videoUrl: url }),
       })
       const body = await res.json()
-      if (!res.ok) throw new Error(body?.error || 'Unknown error')
-      setTranscript(body.data?.transcript ?? null)
+      console.log('API Response:', body)
+
+      if (!res.ok) {
+        throw new Error(`${body?.error || 'Unknown error'} ${body?.code ? `(${body.code})` : ''}`)
+      }
+
+      if (!body.data?.transcript) {
+        throw new Error('No transcript data received')
+      }
+
+      setTranscript(body.data.transcript)
     } catch (err: any) {
+      console.error('Transcript fetch error:', err)
       setError(err.message ?? String(err))
     } finally {
       setLoading(false)
@@ -60,8 +70,37 @@ export default function HomePage() {
 
       {transcript && (
         <section className="mt-6">
-          <h2 className="text-xl font-medium">Transcript</h2>
-          <pre className="whitespace-pre-wrap bg-white p-4 rounded mt-2">{transcript}</pre>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-medium">Transcript</h2>
+            <div className="space-x-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(transcript)
+                  // TODO: Add toast notification
+                }}
+                className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-sm hover:bg-slate-200"
+              >
+                Copy to Clipboard
+              </button>
+              <button
+                onClick={() => {
+                  const blob = new Blob([transcript], { type: 'text/plain' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = 'transcript.txt'
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                  URL.revokeObjectURL(url)
+                }}
+                className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded text-sm hover:bg-slate-200"
+              >
+                Download .txt
+              </button>
+            </div>
+          </div>
+          <pre className="whitespace-pre-wrap bg-white p-4 rounded mt-2 border">{transcript}</pre>
         </section>
       )}
     </div>

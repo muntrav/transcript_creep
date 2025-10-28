@@ -1,11 +1,5 @@
 import { NextResponse } from 'next/server'
-
-export function getHealth() {
-  return {
-    status: 'healthy',
-    timestamp: new Date().toISOString()
-  }
-}
+import { getHealth } from '@/lib/health'
 
 export async function GET() {
   return NextResponse.json(getHealth())
