@@ -2,6 +2,7 @@ const YOUTUBE_URL_PATTERNS = [
   /^https?:\/\/(?:www\.)?youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/, // Standard watch URL with query params
   /^https?:\/\/youtu\.be\/([a-zA-Z0-9_-]{11})/, // Short URL
   /^https?:\/\/(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/, // Embed URL
+  /^https?:\/\/(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})(?:\b|\/|\?|#)/, // Shorts URL
 ]
 
 export function extractVideoId(url: string): string | null {

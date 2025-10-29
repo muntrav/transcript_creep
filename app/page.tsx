@@ -34,7 +34,9 @@ import {
   Close as CloseIcon,
 } from '@mui/icons-material'
 import ThemeToggle from '@/components/ThemeToggle'
+import PageSwitcher from '@/components/PageSwitcher'
 import { groupSegmentsByInterval } from '@/lib/segment-group'
+import { validateYouTubeUrl } from '@/lib/youtube'
 
 type TranscriptSegment = {
   text: string
@@ -62,6 +64,8 @@ export default function HomePage() {
   const [showTimestamps, setShowTimestamps] = useState(false)
   const [qualityMenuAnchor, setQualityMenuAnchor] = useState<null | HTMLElement>(null)
   const [toast, setToast] = useState<ToastType | null>(null)
+
+  const isYouTubeValid = useMemo(() => (url ? validateYouTubeUrl(url).valid : false), [url])
 
   // Show toast notification
   const showToast = (message: string, type: ToastType['type'] = 'success') => {
@@ -105,6 +109,10 @@ export default function HomePage() {
     setLoading(true)
 
     try {
+      const v = validateYouTubeUrl(url)
+      if (!v.valid) {
+        throw new Error(v.error || 'Please enter a valid YouTube URL')
+      }
       const res = await fetch('/api/transcript', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -198,9 +206,17 @@ export default function HomePage() {
   }
 
   return (
-    <Box sx={{ minHeight: '100vh' }}>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: (theme) =>
+          theme.palette.mode === 'dark'
+            ? 'linear-gradient(180deg, #2B313F 0%, #232836 50%, #1c2230 100%)'
+            : 'linear-gradient(180deg, #D2DEE3 0%, #c9d9df 40%, #b9d3da 100%)',
+      }}
+    >
       {/* App Bar */}
-      <AppBar position="static" elevation={0} sx={{ bgcolor: 'primary.main' }}>
+      <AppBar position="static" elevation={0} color="inherit" sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
         <Toolbar sx={{ position: 'relative', justifyContent: 'center', minHeight: 88 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <IconButton
@@ -220,18 +236,43 @@ export default function HomePage() {
               Transcriptcreep
             </Typography>
           </Box>
-          <Box sx={{ position: 'absolute', right: 16 }}>
+          <Box sx={{ position: 'absolute', right: 16, display: 'flex', alignItems: 'center', gap: { xs: 1.5, md: 2 }, ml: { xs: 0, sm: 4 }, maxWidth: { xs: '60%', md: 'unset' } }}>
+            <PageSwitcher />
             <ThemeToggle />
           </Box>
         </Toolbar>
       </AppBar>
 
       {/* Main Content */}
-      <Container maxWidth="md" sx={{ py: 8 }}>
+      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+        {/* Hero Section */}
+        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+          <Typography variant="h3" component="h1" fontWeight={800} color="text.primary" gutterBottom>
+            Lets creep that script
+          </Typography>
+          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 820, mx: 'auto' }}>
+            Generate clean transcripts from any YouTube video. Copy in one click, download as text, or switch to timestamps.
+          </Typography>
+        </Box>
+
         {/* URL Input Form */}
-        <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 3 }}>
+        <Paper
+          elevation={3}
+          sx={{
+            p: { xs: 3, md: 4 },
+            mb: { xs: 4, md: 6 },
+            borderRadius: { xs: 3, md: 5 },
+            mx: 'auto',
+            maxWidth: 1100,
+            overflow: 'hidden',
+          }}
+        >
           <form onSubmit={handleSubmit}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={{ xs: 2, md: 2.5 }}
+              alignItems={{ xs: 'stretch', md: 'center' }}
+            >
               <TextField
                 fullWidth
                 value={url}
@@ -239,21 +280,71 @@ export default function HomePage() {
                 placeholder="Enter YouTube video URL..."
                 variant="outlined"
                 disabled={loading}
+                error={Boolean(url) && !isYouTubeValid}
+                helperText={Boolean(url) && !isYouTubeValid ? 'Please enter a valid URL' : ' '}
                 sx={{ flexGrow: 1 }}
               />
               <Button
                 type="submit"
                 variant="contained"
                 size="large"
-                disabled={loading}
+                disabled={loading || (url.length > 0 && !isYouTubeValid)}
                 endIcon={<SendIcon />}
-                sx={{ minWidth: { xs: '100%', sm: 160 } }}
+                sx={{
+                  minWidth: { xs: '100%', md: 200 },
+                  width: { xs: '100%', md: 'auto' },
+                  alignSelf: { xs: 'stretch', md: 'center' },
+                  py: { xs: 1.5, md: 1.2 },
+                }}
               >
                 {loading ? 'Loading...' : 'Get Transcript'}
               </Button>
             </Stack>
           </form>
         </Paper>
+
+        {/* Feature Badges */}
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center" sx={{ mb: { xs: 4, md: 6 } }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CopyIcon color="primary" />
+            <Typography variant="body2" fontWeight={700}>One-click Copy</Typography>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <ScheduleIcon color="primary" />
+            <Typography variant="body2" fontWeight={700}>Timestamps View</Typography>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CloudDownloadIcon color="primary" />
+            <Typography variant="body2" fontWeight={700}>Export as Text</Typography>
+          </Stack>
+        </Stack>
+
+        {/* How it works */}
+        <Box sx={{ maxWidth: 1000, mx: 'auto', mb: { xs: 6, md: 8 } }}>
+          <Typography variant="h5" align="center" fontWeight={700} sx={{ mb: 2 }} color="text.primary">
+            How it works
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
+                <Typography fontWeight={700}>1. Paste a YouTube URL</Typography>
+                <Typography variant="body2" color="text.secondary">We validate the link client‑side to save you time.</Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
+                <Typography fontWeight={700}>2. Fetch & Clean</Typography>
+                <Typography variant="body2" color="text.secondary">We fetch, decode entities, and normalize timestamps.</Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
+                <Typography fontWeight={700}>3. Copy or Download</Typography>
+                <Typography variant="body2" color="text.secondary">Copy in one click or export to a tidy text file.</Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </Box>
 
         {/* Error Alert */}
         {error && (

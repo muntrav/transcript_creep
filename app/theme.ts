@@ -1,13 +1,13 @@
 import { createTheme, ThemeOptions } from '@mui/material/styles'
 
-// Custom color palette based on the teal/green scheme
+// Brand palette (from provided spec)
+//  - Primary accent: #59B9C7 (aqua / teal)
+//  - Light background: #D2DEE3 (light grey-blue)
+//  - Dark background: #2B313F (slate)
 const colorPalette = {
-  darkest: '#051F20', // Darkest teal-black
-  darker: '#0B2B26', // Dark teal
-  dark: '#163832', // Medium-dark teal
-  medium: '#235347', // Medium teal
-  light: '#8EB69B', // Light sage green
-  lightest: '#DAF1DE', // Lightest mint
+  primary: '#59B9C7',
+  lightBg: '#D2DEE3',
+  darkBg: '#2B313F',
   white: '#FFFFFF',
   black: '#000000',
 }
@@ -17,24 +17,24 @@ const lightThemeOptions: ThemeOptions = {
   palette: {
     mode: 'light',
     primary: {
-      main: colorPalette.medium, // #235347
-      light: colorPalette.light, // #8EB69B
-      dark: colorPalette.dark, // #163832
-      contrastText: colorPalette.white,
+      main: colorPalette.primary,
+      light: '#7fd0d9',
+      dark: '#3b8f9a',
+      contrastText: colorPalette.darkBg,
     },
     secondary: {
-      main: colorPalette.light, // #8EB69B
-      light: colorPalette.lightest, // #DAF1DE
-      dark: colorPalette.medium, // #235347
-      contrastText: colorPalette.darkest,
+      main: colorPalette.darkBg,
+      light: '#3c4458',
+      dark: '#202531',
+      contrastText: colorPalette.white,
     },
     background: {
-      default: colorPalette.lightest, // #DAF1DE
+      default: colorPalette.lightBg,
       paper: colorPalette.white,
     },
     text: {
-      primary: colorPalette.darkest,
-      secondary: colorPalette.dark,
+      primary: colorPalette.darkBg,
+      secondary: '#4a5568',
     },
     error: {
       main: '#d32f2f',
@@ -43,15 +43,17 @@ const lightThemeOptions: ThemeOptions = {
       main: '#ed6c02',
     },
     info: {
-      main: colorPalette.medium,
+      main: colorPalette.primary,
     },
     success: {
-      main: colorPalette.dark,
+      main: '#2e7d32',
     },
   },
   typography: {
+    // If "Graphic Garden" is available as a webfont or locally, it will be used.
+    // Otherwise we fall back to Geist Sans / system fonts.
     fontFamily:
-      'var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      '"Graphic Garden", var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     h1: {
       fontWeight: 700,
     },
@@ -73,10 +75,10 @@ const lightThemeOptions: ThemeOptions = {
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: '0 2px 8px rgba(5, 31, 32, 0.08)',
+          boxShadow: '0 2px 8px rgba(43, 49, 63, 0.08)',
           transition: 'box-shadow 0.3s ease',
           '&:hover': {
-            boxShadow: '0 4px 16px rgba(5, 31, 32, 0.12)',
+            boxShadow: '0 4px 16px rgba(43, 49, 63, 0.14)',
           },
         },
       },
@@ -91,7 +93,7 @@ const lightThemeOptions: ThemeOptions = {
         contained: {
           boxShadow: 'none',
           '&:hover': {
-            boxShadow: '0 2px 8px rgba(5, 31, 32, 0.15)',
+            boxShadow: '0 2px 8px rgba(43, 49, 63, 0.18)',
           },
         },
       },
@@ -113,24 +115,24 @@ const darkThemeOptions: ThemeOptions = {
   palette: {
     mode: 'dark',
     primary: {
-      main: colorPalette.light, // #8EB69B
-      light: colorPalette.lightest, // #DAF1DE
-      dark: colorPalette.medium, // #235347
-      contrastText: colorPalette.darkest,
+      main: colorPalette.primary,
+      light: '#7fd0d9',
+      dark: '#3b8f9a',
+      contrastText: colorPalette.darkBg,
     },
     secondary: {
-      main: colorPalette.medium, // #235347
-      light: colorPalette.light, // #8EB69B
-      dark: colorPalette.dark, // #163832
-      contrastText: colorPalette.white,
+      main: colorPalette.lightBg,
+      light: '#e3eaee',
+      dark: '#aab7bf',
+      contrastText: colorPalette.darkBg,
     },
     background: {
-      default: colorPalette.darkest, // #051F20
-      paper: colorPalette.darker, // #0B2B26
+      default: colorPalette.darkBg,
+      paper: '#232836',
     },
     text: {
-      primary: colorPalette.lightest,
-      secondary: colorPalette.light,
+      primary: colorPalette.lightBg,
+      secondary: '#9fb3bf',
     },
     error: {
       main: '#f44336',
@@ -139,15 +141,15 @@ const darkThemeOptions: ThemeOptions = {
       main: '#ff9800',
     },
     info: {
-      main: colorPalette.light,
+      main: colorPalette.primary,
     },
     success: {
-      main: colorPalette.medium,
+      main: '#66bb6a',
     },
   },
   typography: {
     fontFamily:
-      'var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      '"Graphic Garden", var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     h1: {
       fontWeight: 700,
     },
