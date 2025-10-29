@@ -1,11 +1,3 @@
 {
-  "functions": {
-    "app/api/transcript/route.ts": {
-      "maxDuration": 60
-    },
-    "app/api/download/route.ts": {
-      "maxDuration": 30
-    }
-  },
   "regions": ["iad1", "sfo1"]
 }
