@@ -67,14 +67,21 @@ This is configured in:
 2. Frontend POSTs to `/api/transcript`
 3. [app/api/transcript/route.ts](app/api/transcript/route.ts) validates URL using `validateYouTubeUrl()`
    - **Important**: This route uses `export const runtime = 'nodejs'` to ensure Node.js runtime (required for network requests)
-4. [lib/transcript.ts](lib/transcript.ts) calls `getTranscript()` which:
-   - Extracts video ID using `extractVideoId()`
-   - Calls `YoutubeTranscript.fetchTranscript()` with automatic retry logic (3 attempts with exponential backoff)
-   - Retry delays: 1s, 2s, 4s between attempts
-   - Decodes HTML entities in transcript text (e.g., `&amp;#39;` → `'`)
-   - Converts segments to standard format with millisecond timestamps
-   - Returns full transcript text and individual segments
-5. Response includes:
+4. [lib/transcript.ts](lib/transcript.ts) calls `getTranscript()` which uses a multi-tier fallback system:
+   - **Primary Method (Production)**: RapidAPI YouTube Transcript service via [lib/transcript-rapidapi.ts](lib/transcript-rapidapi.ts)
+     - Reliable on Vercel deployment (avoids IP blocking)
+     - Requires `RAPIDAPI_KEY` environment variable
+     - Same API key used for video downloads
+   - **Fallback Method 1**: Direct library fetch via `@danielxceron/youtube-transcript`
+     - Works locally but may fail on Vercel due to IP blocking
+     - Automatic retry logic (2 attempts with exponential backoff)
+     - Retry delays: 500ms, 1000ms between attempts
+   - **Fallback Method 2**: Custom timedtext API implementation
+     - Direct calls to YouTube's timedtext API
+     - Supports JSON3 and VTT formats
+     - May also fail on Vercel due to IP blocking
+5. All methods decode HTML entities in transcript text (e.g., `&amp;#39;` → `'`)
+6. Response includes:
    - `transcript`: Full concatenated text with decoded HTML entities
    - `segments`: Array of `{ text, duration, offset }` objects
    - `videoId`: Extracted video ID
@@ -89,8 +96,16 @@ This is configured in:
    - Calls YTStream API (RapidAPI) to get download link
    - Returns download URL, video title, and thumbnail
 4. Frontend opens download link in new tab
-5. **Setup Required**: Add `RAPIDAPI_KEY` to `.env.local` file
-   - Get your free API key from [RapidAPI](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos)
+5. **Setup Required**: Add two RapidAPI keys to `.env.local` file:
+   ```
+   RAPIDAPI_KEY=your_ytstream_api_key_here
+   RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here
+   ```
+
+   - Get your free API keys from [RapidAPI](https://rapidapi.com/)
+   - Subscribe to both APIs (each provides its own API key):
+     - [YTStream API](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos) for video downloads → use as `RAPIDAPI_KEY`
+     - [YouTube Captions Transcript API](https://rapidapi.com/LucaBert89/api/youtube-captions-transcript-subtitles-video-combiner) for transcript fetching → use as `RAPIDAPI_TRANSCRIPT_KEY`
 
 ### Error Handling
 
@@ -178,9 +193,17 @@ Video IDs are always 11 characters: alphanumeric, underscore, or hyphen.
 
 **Retry Logic**: The transcript fetching includes automatic retry with exponential backoff to handle intermittent network failures. This improves reliability when YouTube's servers are slow to respond.
 
-**Environment Variables**: The video download feature requires a RapidAPI key:
+**Environment Variables**: Both transcript fetching and video download features require RapidAPI keys:
 
 - Create a `.env.local` file in the project root
-- Add: `RAPIDAPI_KEY=your_rapidapi_key_here`
-- Get a free key from [RapidAPI YTStream](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos)
+- Add two separate API keys:
+  ```
+  RAPIDAPI_KEY=your_ytstream_api_key_here
+  RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here
+  ```
+- Get free keys from [RapidAPI](https://rapidapi.com/) by subscribing to both APIs:
+  - [YouTube Captions Transcript API](https://rapidapi.com/LucaBert89/api/youtube-captions-transcript-subtitles-video-combiner) → `RAPIDAPI_TRANSCRIPT_KEY` (required for production/Vercel)
+  - [YTStream API](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos) → `RAPIDAPI_KEY`
+- Each API subscription provides its own unique API key
 - The free tier includes limited requests per month
+- **Important for Vercel**: The RapidAPI transcript method is the primary method used in production to avoid IP blocking issues that occur with direct YouTube scraping from serverless functions

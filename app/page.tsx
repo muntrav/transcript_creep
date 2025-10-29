@@ -34,6 +34,7 @@ import {
   Close as CloseIcon,
 } from '@mui/icons-material'
 import ThemeToggle from '@/components/ThemeToggle'
+import { groupSegmentsByInterval } from '@/lib/segment-group'
 
 type TranscriptSegment = {
   text: string
@@ -89,9 +90,8 @@ export default function HomePage() {
     if (!transcriptData) return ''
 
     if (showTimestamps) {
-      return transcriptData.segments
-        .map((seg) => `${formatTimestamp(seg.offset)} - ${seg.text}`)
-        .join('\n\n')
+      const buckets = groupSegmentsByInterval(transcriptData.segments, 10_000)
+      return buckets.map((b) => `${formatTimestamp(b.startMs)} - ${b.text}`).join('\n\n')
     } else {
       return transcriptData.transcript
     }
@@ -407,24 +407,26 @@ export default function HomePage() {
                   }}
                 >
                   {showTimestamps ? (
-                    // Display with timestamps (segmented view)
+                    // Display grouped by 10-second buckets
                     <Stack spacing={2}>
-                      {transcriptData.segments.map((segment, index) => (
-                        <Box key={index}>
-                          <Typography
-                            variant="caption"
-                            color="primary"
-                            fontWeight={600}
-                            display="block"
-                            gutterBottom
-                          >
-                            {formatTimestamp(segment.offset)}
-                          </Typography>
-                          <Typography variant="body2" color="text.primary">
-                            {segment.text}
-                          </Typography>
-                        </Box>
-                      ))}
+                      {groupSegmentsByInterval(transcriptData.segments, 10_000).map(
+                        (bucket, index) => (
+                          <Box key={index}>
+                            <Typography
+                              variant="caption"
+                              color="primary"
+                              fontWeight={600}
+                              display="block"
+                              gutterBottom
+                            >
+                              {formatTimestamp(bucket.startMs)}
+                            </Typography>
+                            <Typography variant="body2" color="text.primary">
+                              {bucket.text}
+                            </Typography>
+                          </Box>
+                        )
+                      )}
                     </Stack>
                   ) : (
                     // Display as continuous long text

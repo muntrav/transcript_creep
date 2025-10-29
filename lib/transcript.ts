@@ -1,5 +1,7 @@
 import { extractVideoId } from './youtube'
 import { YoutubeTranscript } from '@danielxceron/youtube-transcript'
+import { getTranscriptViaRapidAPI } from './transcript-rapidapi'
+import { decodeHtmlEntities } from './html'
 
 export type TranscriptSegment = {
   text: string
@@ -264,23 +266,41 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
       nodeEnv: process.env.NODE_ENV,
       vercel: process.env.VERCEL,
       region: process.env.VERCEL_REGION,
+      hasRapidApiTranscriptKey: !!process.env.RAPIDAPI_TRANSCRIPT_KEY,
     })
 
-    // Primary: library fetch with retry
+    // Primary: RapidAPI (works reliably on Vercel, avoids IP blocking)
+    if (process.env.RAPIDAPI_TRANSCRIPT_KEY) {
+      try {
+        console.log('[Transcript] Using RapidAPI as primary method...')
+        return await getTranscriptViaRapidAPI(videoId)
+      } catch (rapidApiError: any) {
+        console.error('[Transcript] RapidAPI failed:', {
+          message: rapidApiError?.message,
+          code: rapidApiError?.code,
+        })
+        // If it's a definitive NO_TRANSCRIPT error, don't try fallbacks
+        if (rapidApiError instanceof TranscriptError && rapidApiError.code === 'NO_TRANSCRIPT') {
+          throw rapidApiError
+        }
+        console.log('[Transcript] Falling back to direct library method...')
+      }
+    }
+
+    // Fallback: Direct library fetch (works locally, may fail on Vercel due to IP blocking)
     let libItems: any[] | null = null
     try {
       console.log('[Transcript] Attempting library fetch with retry...')
       libItems = await retryWithBackoff(
         async () => YoutubeTranscript.fetchTranscript(videoId),
-        3,
-        1000
+        2, // Reduced retries to avoid timeout
+        500 // Shorter delays
       )
       console.log('[Transcript] Library fetch successful, items:', libItems?.length || 0)
     } catch (fetchError: any) {
       console.error('[Transcript] Library fetch failed:', {
         message: fetchError?.message,
         name: fetchError?.name,
-        stack: fetchError?.stack,
       })
       console.log('[Transcript] Enabling timedtext fallback...')
     }
@@ -289,19 +309,6 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
     let language: string | undefined = undefined
 
     if (Array.isArray(libItems) && libItems.length) {
-      const decodeHtmlEntities = (text: string): string => {
-        return text
-          .replace(/&amp;#39;/g, "'")
-          .replace(/&amp;quot;/g, '"')
-          .replace(/&amp;amp;/g, '&')
-          .replace(/&amp;lt;/g, '<')
-          .replace(/&amp;gt;/g, '>')
-          .replace(/&#39;/g, "'")
-          .replace(/&quot;/g, '"')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&nbsp;/g, ' ')
-      }
       segments = libItems.map((item: any) => ({
         text: decodeHtmlEntities(item.text),
         duration: Math.round((item.duration || 0) * 1000),
@@ -311,7 +318,11 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
     } else {
       const fb = await fallbackTimedtext(videoId)
       if (fb && fb.segments.length) {
-        segments = fb.segments
+        // Decode any entities that may appear in VTT/JSON3 text
+        segments = fb.segments.map((s) => ({
+          ...s,
+          text: decodeHtmlEntities(s.text),
+        }))
         language = fb.language
       }
     }
