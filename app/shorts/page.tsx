@@ -65,8 +65,7 @@ export default function ShortsPage() {
   // Improved pill styles for visibility in light mode
   const pillSx = {
     borderRadius: 9999,
-    background:
-      'linear-gradient(90deg, rgba(89,185,199,0.18) 0%, rgba(59,143,154,0.18) 100%)',
+    background: 'linear-gradient(90deg, rgba(89,185,199,0.18) 0%, rgba(59,143,154,0.18) 100%)',
     border: '1px solid rgba(43,49,63,0.12)',
     '& .MuiToggleButtonGroup-grouped': {
       border: 0,
@@ -142,7 +141,12 @@ export default function ShortsPage() {
             : 'linear-gradient(180deg, #D2DEE3 0%, #c9d9df 40%, #b9d3da 100%)',
       }}
     >
-      <AppBar position="static" elevation={0} color="inherit" sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+      <AppBar
+        position="static"
+        elevation={0}
+        color="inherit"
+        sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}
+      >
         <Toolbar sx={{ position: 'relative', justifyContent: 'space-between', minHeight: 88 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Link href="/" style={{ display: 'inline-flex' }}>
@@ -153,7 +157,17 @@ export default function ShortsPage() {
             </Typography>
           </Box>
           {/* Page switcher & theme toggle are on the right; keep center clean */}
-          <Box sx={{ position: 'absolute', right: 16, display: 'flex', alignItems: 'center', gap: { xs: 1.5, md: 2 }, ml: { xs: 0, sm: 4 }, maxWidth: { xs: '60%', md: 'unset' } }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              right: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1.5, md: 2 },
+              ml: { xs: 0, sm: 4 },
+              maxWidth: { xs: '60%', md: 'unset' },
+            }}
+          >
             <PageSwitcher />
             <ThemeToggle />
           </Box>
@@ -163,11 +177,18 @@ export default function ShortsPage() {
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
         {/* Hero Section */}
         <Box sx={{ textAlign: 'center', mb: 5 }}>
-          <Typography variant="h3" component="h1" fontWeight={800} color="secondary.main" gutterBottom>
+          <Typography
+            variant="h3"
+            component="h1"
+            fontWeight={800}
+            color="secondary.main"
+            gutterBottom
+          >
             Download Shorts
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 820, mx: 'auto' }}>
-            Save short-form videos or extract audio as MP3 — works with YouTube Shorts, Instagram Reels, and TikTok.
+            Save short-form videos or extract audio as MP3 — works with YouTube Shorts, Instagram
+            Reels, and TikTok.
           </Typography>
         </Box>
         <Paper
@@ -193,7 +214,11 @@ export default function ShortsPage() {
               <ToggleButton value="audio">Audio</ToggleButton>
             </ToggleButtonGroup>
           </Stack>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 2, md: 2.5 }} alignItems={{ xs: 'stretch', md: 'center' }}>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={{ xs: 2, md: 2.5 }}
+            alignItems={{ xs: 'stretch', md: 'center' }}
+          >
             <TextField
               fullWidth
               value={url}
@@ -232,7 +257,15 @@ export default function ShortsPage() {
           <Paper elevation={2} sx={{ p: 2, maxWidth: 900, mx: 'auto' }}>
             <Stack direction="row" spacing={2} alignItems="center">
               {info?.thumbnail && (
-                <Box sx={{ width: 140, height: 80, borderRadius: 2, overflow: 'hidden', flex: '0 0 auto' }}>
+                <Box
+                  sx={{
+                    width: 140,
+                    height: 80,
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                    flex: '0 0 auto',
+                  }}
+                >
                   <img
                     src={info.thumbnail}
                     alt={info?.title || 'thumbnail'}
@@ -248,8 +281,8 @@ export default function ShortsPage() {
                   {typeof info?.durationSeconds === 'number'
                     ? `Duration: ${formatDuration(info.durationSeconds)}`
                     : isDownloading
-                    ? 'Fetching metadata...'
-                    : 'Duration: —'}
+                      ? 'Fetching metadata...'
+                      : 'Duration: —'}
                 </Typography>
               </Box>
             </Stack>
@@ -259,26 +292,38 @@ export default function ShortsPage() {
 
         {/* How it works */}
         <Box sx={{ maxWidth: 1000, mx: 'auto', mt: { xs: 4, md: 6 } }}>
-          <Typography variant="h5" align="center" fontWeight={700} sx={{ mb: 2 }} color="text.primary">
+          <Typography
+            variant="h5"
+            align="center"
+            fontWeight={700}
+            sx={{ mb: 2 }}
+            color="text.primary"
+          >
             How it works
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} md={4}>
               <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
                 <Typography fontWeight={700}>1. Paste a Shorts URL</Typography>
-                <Typography variant="body2" color="text.secondary">We support YouTube, Instagram Reels and TikTok.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We support YouTube, Instagram Reels and TikTok.
+                </Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} md={4}>
               <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
                 <Typography fontWeight={700}>2. Fetch Details</Typography>
-                <Typography variant="body2" color="text.secondary">We normalize the link and pick the best media URL.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We normalize the link and pick the best media URL.
+                </Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} md={4}>
               <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
                 <Typography fontWeight={700}>3. Download Video or MP3</Typography>
-                <Typography variant="body2" color="text.secondary">Choose Video or Audio above and start the download.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Choose Video or Audio above and start the download.
+                </Typography>
               </Paper>
             </Grid>
           </Grid>

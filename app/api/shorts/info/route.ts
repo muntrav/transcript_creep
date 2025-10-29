@@ -15,6 +15,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: info })
   } catch (err: any) {
     console.error('[Shorts] /info error', err)
-    return NextResponse.json({ success: false, error: String(err?.message || err) }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: String(err?.message || err) },
+      { status: 500 }
+    )
   }
 }

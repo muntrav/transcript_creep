@@ -97,6 +97,7 @@ This is configured in:
    - Returns download URL, video title, and thumbnail
 4. Frontend opens download link in new tab
 5. **Setup Required**: Add two RapidAPI keys to `.env.local` file:
+
    ```
    RAPIDAPI_KEY=your_ytstream_api_key_here
    RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here

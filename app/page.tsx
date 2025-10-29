@@ -216,7 +216,12 @@ export default function HomePage() {
       }}
     >
       {/* App Bar */}
-      <AppBar position="static" elevation={0} color="inherit" sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+      <AppBar
+        position="static"
+        elevation={0}
+        color="inherit"
+        sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}
+      >
         <Toolbar sx={{ position: 'relative', justifyContent: 'center', minHeight: 88 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <IconButton
@@ -236,7 +241,17 @@ export default function HomePage() {
               Transcriptcreep
             </Typography>
           </Box>
-          <Box sx={{ position: 'absolute', right: 16, display: 'flex', alignItems: 'center', gap: { xs: 1.5, md: 2 }, ml: { xs: 0, sm: 4 }, maxWidth: { xs: '60%', md: 'unset' } }}>
+          <Box
+            sx={{
+              position: 'absolute',
+              right: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1.5, md: 2 },
+              ml: { xs: 0, sm: 4 },
+              maxWidth: { xs: '60%', md: 'unset' },
+            }}
+          >
             <PageSwitcher />
             <ThemeToggle />
           </Box>
@@ -247,11 +262,18 @@ export default function HomePage() {
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
         {/* Hero Section */}
         <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
-          <Typography variant="h3" component="h1" fontWeight={800} color="text.primary" gutterBottom>
+          <Typography
+            variant="h3"
+            component="h1"
+            fontWeight={800}
+            color="text.primary"
+            gutterBottom
+          >
             Lets creep that script
           </Typography>
           <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 820, mx: 'auto' }}>
-            Generate clean transcripts from any YouTube video. Copy in one click, download as text, or switch to timestamps.
+            Generate clean transcripts from any YouTube video. Copy in one click, download as text,
+            or switch to timestamps.
           </Typography>
         </Box>
 
@@ -304,43 +326,67 @@ export default function HomePage() {
         </Paper>
 
         {/* Feature Badges */}
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center" alignItems="center" sx={{ mb: { xs: 4, md: 6 } }}>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          justifyContent="center"
+          alignItems="center"
+          sx={{ mb: { xs: 4, md: 6 } }}
+        >
           <Stack direction="row" spacing={1} alignItems="center">
             <CopyIcon color="primary" />
-            <Typography variant="body2" fontWeight={700}>One-click Copy</Typography>
+            <Typography variant="body2" fontWeight={700}>
+              One-click Copy
+            </Typography>
           </Stack>
           <Stack direction="row" spacing={1} alignItems="center">
             <ScheduleIcon color="primary" />
-            <Typography variant="body2" fontWeight={700}>Timestamps View</Typography>
+            <Typography variant="body2" fontWeight={700}>
+              Timestamps View
+            </Typography>
           </Stack>
           <Stack direction="row" spacing={1} alignItems="center">
             <CloudDownloadIcon color="primary" />
-            <Typography variant="body2" fontWeight={700}>Export as Text</Typography>
+            <Typography variant="body2" fontWeight={700}>
+              Export as Text
+            </Typography>
           </Stack>
         </Stack>
 
         {/* How it works */}
         <Box sx={{ maxWidth: 1000, mx: 'auto', mb: { xs: 6, md: 8 } }}>
-          <Typography variant="h5" align="center" fontWeight={700} sx={{ mb: 2 }} color="text.primary">
+          <Typography
+            variant="h5"
+            align="center"
+            fontWeight={700}
+            sx={{ mb: 2 }}
+            color="text.primary"
+          >
             How it works
           </Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} md={4}>
               <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
                 <Typography fontWeight={700}>1. Paste a YouTube URL</Typography>
-                <Typography variant="body2" color="text.secondary">We validate the link client‑side to save you time.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We validate the link client‑side to save you time.
+                </Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} md={4}>
               <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
                 <Typography fontWeight={700}>2. Fetch & Clean</Typography>
-                <Typography variant="body2" color="text.secondary">We fetch, decode entities, and normalize timestamps.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We fetch, decode entities, and normalize timestamps.
+                </Typography>
               </Paper>
             </Grid>
             <Grid item xs={12} md={4}>
               <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
                 <Typography fontWeight={700}>3. Copy or Download</Typography>
-                <Typography variant="body2" color="text.secondary">Copy in one click or export to a tidy text file.</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Copy in one click or export to a tidy text file.
+                </Typography>
               </Paper>
             </Grid>
           </Grid>

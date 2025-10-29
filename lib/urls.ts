@@ -13,8 +13,7 @@ export function validateShortsUrl(url: string): UrlValidation {
   if (!url || !isHttpUrl(url)) return { valid: false, error: 'Enter a valid URL' }
   const host = new URL(url).hostname.toLowerCase()
 
-  const isYouTube =
-    /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)
+  const isYouTube = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)
   const isInstagram = /(^|\.)instagram\.com$/.test(host)
   const isTikTok = /(^|\.)tiktok\.com$/.test(host) || /(^|\.)vt\.tiktok\.com$/.test(host)
 
@@ -29,7 +28,8 @@ export function validateShortsUrl(url: string): UrlValidation {
   }
   if (isInstagram) {
     // Expect /reel/, /reels/, or /p/
-    if (/\/reel\//i.test(url) || /\/reels\//i.test(url) || /\/p\//i.test(url)) return { valid: true }
+    if (/\/reel\//i.test(url) || /\/reels\//i.test(url) || /\/p\//i.test(url))
+      return { valid: true }
     return { valid: false, error: 'Use a Reel/Post URL' }
   }
   if (isTikTok) {
@@ -40,4 +40,3 @@ export function validateShortsUrl(url: string): UrlValidation {
 
   return { valid: false, error: 'Unsupported URL' }
 }
-

@@ -1,4 +1,4 @@
-"use client"
+'use client'
 import { ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { usePathname, useRouter } from 'next/navigation'
 

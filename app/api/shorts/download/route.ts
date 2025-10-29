@@ -29,7 +29,10 @@ export async function POST(request: Request) {
     }
     return await handleDownload(url)
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message || 'Download failed' }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Download failed' },
+      { status: 500 }
+    )
   }
 }
 
@@ -40,6 +43,9 @@ export async function GET(request: Request) {
     if (!url) return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })
     return await handleDownload(url)
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message || 'Download failed' }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Download failed' },
+      { status: 500 }
+    )
   }
 }

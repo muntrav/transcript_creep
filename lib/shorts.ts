@@ -83,16 +83,21 @@ function parseDurationToSeconds(val: any): number | undefined {
 }
 
 // Ensures header-safe ASCII filename and provides RFC 5987 filename* for UTF-8
-export function buildContentDisposition(baseName: string | undefined, extWithDot: string, fallback = 'download') {
+export function buildContentDisposition(
+  baseName: string | undefined,
+  extWithDot: string,
+  fallback = 'download'
+) {
   const base = sanitizeFilename(baseName || fallback, fallback)
   const ext = extWithDot.startsWith('.') ? extWithDot : `.${extWithDot}`
 
   // ASCII fallback: strip diacritics and non-ASCII
-  const ascii = base
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\x20-\x7E]/g, '')
-    .trim() || fallback
+  const ascii =
+    base
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, '')
+      .trim() || fallback
 
   const filenameAscii = `${ascii}${ext}`
   const filenameUtf8 = encodeURIComponent(`${base}${ext}`)
@@ -115,7 +120,7 @@ async function tryQuery(url: string, _param: string, key: string) {
   const bodyText = await res.text().catch(() => '')
   if (!res.ok) {
     throw new Error(
-      `RapidAPI request failed: ${res.status} ${res.statusText}; ct=${contentType}; body=${bodyText.slice(0,200)}`
+      `RapidAPI request failed: ${res.status} ${res.statusText}; ct=${contentType}; body=${bodyText.slice(0, 200)}`
     )
   }
   try {
@@ -133,7 +138,10 @@ export async function fetchShortsInfo(sourceUrl: string): Promise<ShortsInfo> {
     const { extractVideoId } = await import('./youtube')
     const vid = extractVideoId(sourceUrl)
     if (vid) {
-      const ytKey = process.env.RAPIDAPI_KEY || process.env.RAPIDAPI_YTSTREAM_KEY || process.env.RAPIDAPI_SHORTS_KEY
+      const ytKey =
+        process.env.RAPIDAPI_KEY ||
+        process.env.RAPIDAPI_YTSTREAM_KEY ||
+        process.env.RAPIDAPI_SHORTS_KEY
       if (!ytKey) throw new Error('RAPIDAPI_KEY not configured for YouTube')
       const host = 'ytstream-download-youtube-videos.p.rapidapi.com'
       const url = 'https://' + host + '/dl?id=' + encodeURIComponent(vid)
@@ -144,7 +152,14 @@ export async function fetchShortsInfo(sourceUrl: string): Promise<ShortsInfo> {
       })
       const text = await res.text().catch(() => '')
       if (!res.ok) {
-        throw new Error('YT RapidAPI failed: ' + res.status + ' ' + res.statusText + '; body=' + text.slice(0, 200))
+        throw new Error(
+          'YT RapidAPI failed: ' +
+            res.status +
+            ' ' +
+            res.statusText +
+            '; body=' +
+            text.slice(0, 200)
+        )
       }
       let data: any
       try {
