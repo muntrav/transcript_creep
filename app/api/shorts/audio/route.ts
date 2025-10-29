@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { fetchShortsInfo, buildContentDisposition } from '@/lib/shorts'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 async function handleAudio(url: string) {
   console.log('[Shorts] /audio request for', url)
