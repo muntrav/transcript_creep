@@ -123,20 +123,33 @@ export async function POST(request: Request) {
       temperature: 0.2,
     }
 
+    const originHeader =
+      request.headers.get('origin') ||
+      (request.headers.get('x-forwarded-proto') && request.headers.get('host')
+        ? `${request.headers.get('x-forwarded-proto')}://${request.headers.get('host')}`
+        : undefined) ||
+      process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+      process.env.VERCEL_URL ||
+      'https://transcript-creep.vercel.app'
+
     let res: Response | null = null
     let errText = ''
     for (let attempt = 0; attempt < 3; attempt++) {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 25000)
       res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'HTTP-Referer': 'https://transcriptcreep.local',
+          'HTTP-Referer': originHeader,
           'X-Title': 'Transcriptcreep',
         },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       })
+      clearTimeout(timeoutId)
 
       if (res.ok) break
 
