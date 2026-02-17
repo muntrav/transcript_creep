@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
-import { validateYouTubeUrl } from '@/lib/youtube'
+import { validateTranscriptUrl } from '@/lib/urls'
 import { getTranscript, TranscriptError } from '@/lib/transcript'
+import { getTranscriptViaSupadata } from '@/lib/transcript-supadata'
 
 // Force this route to use Node.js runtime instead of Edge
 export const runtime = 'nodejs'
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     const body: TranscriptRequest = await request.json()
     const url = body.videoUrl ?? ''
 
-    const validation = validateYouTubeUrl(url)
+    const validation = validateTranscriptUrl(url)
     if (!validation.valid) {
       return NextResponse.json(
         {
@@ -28,11 +29,17 @@ export async function POST(request: Request) {
     }
 
     console.log('Attempting to fetch transcript for URL:', url)
-    const result = await getTranscript(url)
+    const result =
+      validation.source === 'youtube'
+        ? await getTranscript(url)
+        : await getTranscriptViaSupadata(url)
+    result.sourceUrl = url
+    result.provider = validation.source || result.provider
     console.log('Successfully fetched transcript:', {
       segmentsCount: result.segments.length,
       transcriptLength: result.transcript.length,
       language: result.language,
+      provider: result.provider,
     })
 
     return NextResponse.json({
