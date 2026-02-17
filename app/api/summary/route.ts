@@ -114,8 +114,8 @@ export async function POST(request: Request) {
       trimmed,
     ].join('\n')
 
-    const payload = {
-      model: 'openrouter/free',
+    const modelCandidates = ['deepseek/deepseek-r1-0528:free', 'openrouter/free']
+    const basePayload = {
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -134,30 +134,35 @@ export async function POST(request: Request) {
 
     let res: Response | null = null
     let errText = ''
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 25000)
-      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          'HTTP-Referer': originHeader,
-          'X-Title': 'Transcriptcreep',
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      })
-      clearTimeout(timeoutId)
+    for (const model of modelCandidates) {
+      const payload = { ...basePayload, model }
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 25000)
+        res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'HTTP-Referer': originHeader,
+            'X-Title': 'Transcriptcreep',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
 
-      if (res.ok) break
+        if (res.ok) break
 
-      errText = await res.text().catch(() => '')
-      if (!RETRYABLE_STATUS.has(res.status)) break
+        errText = await res.text().catch(() => '')
+        if (!RETRYABLE_STATUS.has(res.status)) break
 
-      const delay = 500 * Math.pow(2, attempt)
-      await new Promise((resolve) => setTimeout(resolve, delay))
+        const delay = 500 * Math.pow(2, attempt)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+
+      if (res && res.ok) break
     }
 
     if (!res || !res.ok) {
