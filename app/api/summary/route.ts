@@ -172,11 +172,18 @@ export async function POST(request: Request) {
         status === 502
           ? 'OpenRouter free pool is busy. Please try again in a moment.'
           : undefined
+      const errorSnippet = errText?.slice(0, 1000)
+      console.error('[OpenRouter] Error response', {
+        status,
+        statusText,
+        modelTried: modelCandidates,
+        snippet: errorSnippet,
+      })
       return NextResponse.json(
         {
           success: false,
           error: `OpenRouter error: ${status} ${statusText}`,
-          details: errText?.slice(0, 500),
+          details: errorSnippet,
           hint,
         },
         { status }
