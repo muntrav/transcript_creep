@@ -54,6 +54,7 @@ function parseSummaryJson(raw: string) {
 
 export async function POST(request: Request) {
   try {
+    console.log('[Summary] Request received')
     const body: SummaryRequest = await request.json()
     const transcript = (body.transcript || '').trim()
     if (!transcript) {
@@ -134,28 +135,43 @@ export async function POST(request: Request) {
 
     let res: Response | null = null
     let errText = ''
+    console.log('[OpenRouter] Trying models', modelCandidates)
     for (const model of modelCandidates) {
       const payload = { ...basePayload, model }
       for (let attempt = 0; attempt < 3; attempt++) {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 25000)
-        res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'HTTP-Referer': originHeader,
-            'X-Title': 'Transcriptcreep',
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal,
-        })
+        try {
+          res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              'HTTP-Referer': originHeader,
+              'X-Title': 'Transcriptcreep',
+            },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          })
+        } catch (err: any) {
+          clearTimeout(timeoutId)
+          errText = err?.message || String(err)
+          console.error('[OpenRouter] Fetch error', { model, attempt, err: errText })
+          break
+        }
         clearTimeout(timeoutId)
 
         if (res.ok) break
 
         errText = await res.text().catch(() => '')
+        console.error('[OpenRouter] Response error', {
+          model,
+          attempt,
+          status: res.status,
+          statusText: res.statusText,
+          snippet: errText?.slice(0, 500),
+        })
         if (!RETRYABLE_STATUS.has(res.status)) break
 
         const delay = 500 * Math.pow(2, attempt)
