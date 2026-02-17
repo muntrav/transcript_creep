@@ -7,7 +7,8 @@ type SummaryRequest = {
   sourceUrl?: string
 }
 
-const MAX_TRANSCRIPT_CHARS = 12000
+const MAX_TRANSCRIPT_CHARS = 10000
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
 function coerceStringArray(input: any): string[] {
   if (!Array.isArray(input)) return []
@@ -113,29 +114,54 @@ export async function POST(request: Request) {
       trimmed,
     ].join('\n')
 
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://transcriptcreep.local',
-        'X-Title': 'Transcriptcreep',
-      },
-      body: JSON.stringify({
-        model: 'openrouter/free',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-      }),
-    })
+    const payload = {
+      model: 'openrouter/free',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.2,
+    }
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '')
+    let res: Response | null = null
+    let errText = ''
+    for (let attempt = 0; attempt < 3; attempt++) {
+      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'HTTP-Referer': 'https://transcriptcreep.local',
+          'X-Title': 'Transcriptcreep',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (res.ok) break
+
+      errText = await res.text().catch(() => '')
+      if (!RETRYABLE_STATUS.has(res.status)) break
+
+      const delay = 500 * Math.pow(2, attempt)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+
+    if (!res || !res.ok) {
+      const status = res?.status || 500
+      const statusText = res?.statusText || 'Unknown error'
+      const hint =
+        status === 502
+          ? 'OpenRouter free pool is busy. Please try again in a moment.'
+          : undefined
       return NextResponse.json(
-        { success: false, error: `OpenRouter error: ${res.status} ${res.statusText}` },
-        { status: res.status || 500 }
+        {
+          success: false,
+          error: `OpenRouter error: ${status} ${statusText}`,
+          details: errText?.slice(0, 500),
+          hint,
+        },
+        { status }
       )
     }
 
