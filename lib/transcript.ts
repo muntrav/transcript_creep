@@ -1,1 +1,363 @@
-import { extractVideoId } from './youtube'\nimport { YoutubeTranscript } from '@danielxceron/youtube-transcript'\nimport { getTranscriptViaRapidAPI } from './transcript-rapidapi'\nimport { decodeHtmlEntities } from './html'\n\nexport type TranscriptSegment = {\n  text: string\n  duration: number\n  offset: number\n}\n\nexport type TranscriptResult = {\n  transcript: string\n  segments: TranscriptSegment[]\n  videoId?: string\n  language?: string\n  sourceUrl?: string\n  provider?: string\n}\n\nexport class TranscriptError extends Error {\n  constructor(\n    message: string,\n    public code: string\n  ) {\n    super(message)\n    this.name = 'TranscriptError'\n  }\n}\n\n/**\n * Retry helper function with exponential backoff\n */\nasync function retryWithBackoff<T>(\n  fn: () => Promise<T>,\n  maxRetries: number = 3,\n  baseDelay: number = 1000\n): Promise<T> {\n  let lastError: any\n\n  for (let attempt = 0; attempt < maxRetries; attempt++) {\n    try {\n      return await fn()\n    } catch (error) {\n      lastError = error\n\n      // Don't retry on these specific errors\n      if (error instanceof TranscriptError && error.code === 'INVALID_URL') {\n        throw error\n      }\n\n      // If this was the last attempt, throw the error\n      if (attempt === maxRetries - 1) {\n        throw error\n      }\n\n      // Calculate delay with exponential backoff\n      const delay = baseDelay * Math.pow(2, attempt)\n      console.log(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`)\n\n      // Wait before retrying\n      await new Promise((resolve) => setTimeout(resolve, delay))\n    }\n  }\n\n  throw lastError\n}\n\n// Build robust headers for YouTube requests\nfunction buildYouTubeHeaders(): Record<string, string> {\n  const headers: Record<string, string> = {\n    'User-Agent':\n      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',\n    'Accept-Language': 'en-US,en;q=0.9',\n    Accept: '*/*',\n    'Accept-Encoding': 'gzip, deflate, br',\n    Origin: 'https://www.youtube.com',\n    Referer: 'https://www.youtube.com/',\n    'Sec-Fetch-Dest': 'empty',\n    'Sec-Fetch-Mode': 'cors',\n    'Sec-Fetch-Site': 'same-origin',\n  }\n\n  const cookies = process.env.YOUTUBE_COOKIES?.trim()\n  if (cookies) headers['Cookie'] = cookies\n  return headers\n}\n\ntype TimedTextTrack = {\n  langCode: string\n  name?: string\n  kind?: string\n}\n\nasync function fetchTimedtextTrackList(videoId: string): Promise<TimedTextTrack[]> {\n  const url = `https://www.youtube.com/api/timedtext?type=list&v=${encodeURIComponent(videoId)}&hl=en`\n  console.log('[Timedtext] Fetching track list for video:', videoId)\n  const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })\n  console.log('[Timedtext] Track list response status:', res.status)\n  if (!res.ok) {\n    const errorText = await res.text().catch(() => 'no response body')\n    console.error('[Timedtext] Track list failed:', { status: res.status, body: errorText })\n    throw new TranscriptError(`Timedtext list failed: ${res.status}`, 'FETCH_ERROR')\n  }\n  const xml = await res.text()\n  console.log('[Timedtext] Track list XML length:', xml.length)\n  // Lightweight XML attribute parsing for <track ... /> elements\n  const tracks: TimedTextTrack[] = []\n  const trackTagRegex = /<track\b([^>]*?)\/>/g\n  let match: RegExpExecArray | null\n  while ((match = trackTagRegex.exec(xml))) {\n    const attrs = match[1]\n    const attributes: Record<string, string> = {}\n    const attrRegex = /(\w+)=("([^"]*)"|'([^']*)')/g\n    let a: RegExpExecArray | null\n    while ((a = attrRegex.exec(attrs))) {\n      const key = a[1]\n      const value = a[3] ?? a[4] ?? ''\n      attributes[key] = value\n    }\n    const langCode = attributes['lang_code'] || attributes['lang'] || ''\n    const name = attributes['name'] || undefined\n    const kind = attributes['kind'] || undefined\n    tracks.push({ langCode, name, kind })\n  }\n  return tracks\n}\n\nfunction pickPreferredTrack(tracks: TimedTextTrack[]): TimedTextTrack | null {\n  if (!tracks.length) return null\n  const preferred = ['en-US', 'en-GB', 'en']\n  for (const p of preferred) {\n    const exact = tracks.find((t) => t.langCode === p)\n    if (exact) return exact\n  }\n  const en = tracks.find((t) => t.langCode?.toLowerCase().startsWith('en'))\n  if (en) return en\n  return tracks[0]\n}\n\ntype Json3Event = {\n  tStartMs?: number\n  dDurationMs?: number\n  segs?: { utf8: string }[]\n}\n\nasync function fetchTimedtextJson3(videoId: string, track: TimedTextTrack) {\n  const params = new URLSearchParams({ v: videoId, lang: track.langCode, fmt: 'json3' })\n  if (track.name) params.set('name', track.name)\n  if (track.kind) params.set('kind', track.kind)\n  const url = `https://www.youtube.com/api/timedtext?${params.toString()}`\n\n  console.log('[Timedtext] Fetching JSON3 for lang:', track.langCode)\n  const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })\n  console.log('[Timedtext] JSON3 response status:', res.status)\n  if (!res.ok) return null\n\n  const contentType = res.headers.get('content-type') || ''\n  if (!contentType.includes('application/json')) {\n    try {\n      const text = await res.text()\n      return JSON.parse(text)\n    } catch {\n      return null\n    }\n  }\n  return res.json().catch(() => null)\n}\n\nfunction parseJson3ToSegments(json3: any): TranscriptSegment[] {\n  const events: Json3Event[] = Array.isArray(json3?.events) ? json3.events : []\n  const segments: TranscriptSegment[] = []\n  for (const ev of events) {\n    const text = (ev.segs || [])\n      .map((s) => (s && typeof s.utf8 === 'string' ? s.utf8 : ''))\n      .join('')\n      .trim()\n    if (!text) continue\n    const offset = Math.round(ev.tStartMs || 0)\n    const duration = Math.round(ev.dDurationMs || 0)\n    segments.push({ text, offset, duration })\n  }\n  return segments\n}\n\nfunction parseTimestampToMs(ts: string): number {\n  const m = ts.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/)\n  if (!m) return 0\n  const h = parseInt(m[1], 10)\n  const mi = parseInt(m[2], 10)\n  const s = parseInt(m[3], 10)\n  const ms = parseInt(m[4], 10)\n  return ((h * 60 + mi) * 60 + s) * 1000 + ms\n}\n\nfunction parseVttToSegments(vtt: string): TranscriptSegment[] {\n  const lines = vtt.split(/\r?\n/)\n  const segments: TranscriptSegment[] = []\n  let i = 0\n  while (i < lines.length) {\n    const line = lines[i].trim()\n    i++\n    if (!line) continue\n    if (/-->/.test(line)) {\n      const [start, end] = line.split(/\s+-->\s+/)\n      let textLines: string[] = []\n      while (i < lines.length && lines[i].trim()) {\n        textLines.push(lines[i].trim())\n        i++\n      }\n      const text = textLines.join(' ').trim()\n      const offset = parseTimestampToMs(start)\n      const duration = Math.max(parseTimestampToMs(end) - offset, 0)\n      if (text) segments.push({ text, offset, duration })\n    }\n  }\n  return segments\n}\n\nasync function fetchTimedtextVtt(videoId: string, track: TimedTextTrack): Promise<string | null> {\n  const params = new URLSearchParams({ v: videoId, lang: track.langCode, fmt: 'vtt' })\n  if (track.name) params.set('name', track.name)\n  if (track.kind) params.set('kind', track.kind)\n  const url = `https://www.youtube.com/api/timedtext?${params.toString()}`\n  const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })\n  if (!res.ok) return null\n  const text = await res.text()\n  if (!text || !/^WEBVTT/m.test(text)) return null\n  return text\n}\n\nasync function fallbackTimedtext(\n  videoId: string\n): Promise<{ segments: TranscriptSegment[]; language?: string } | null> {\n  try {\n    const tracks = await fetchTimedtextTrackList(videoId)\n    if (!tracks.length) return null\n    const track = pickPreferredTrack(tracks)\n    if (!track) return null\n\n    const json3 = await fetchTimedtextJson3(videoId, track)\n    if (json3) {\n      const segments = parseJson3ToSegments(json3)\n      if (segments.length) return { segments, language: track.langCode }\n    }\n\n    const vtt = await fetchTimedtextVtt(videoId, track)\n    if (vtt) {\n      const segments = parseVttToSegments(vtt)\n      if (segments.length) return { segments, language: track.langCode }\n    }\n\n    return null\n  } catch {\n    return null\n  }\n}\n\nexport async function getTranscript(url: string): Promise<TranscriptResult> {\n  const videoId = extractVideoId(url)\n  if (!videoId) {\n    throw new TranscriptError('Invalid YouTube URL', 'INVALID_URL')\n  }\n\n  try {\n    console.log('[Transcript] Starting fetch for video ID:', videoId)\n    console.log('[Transcript] Environment:', {\n      nodeEnv: process.env.NODE_ENV,\n      vercel: process.env.VERCEL,\n      region: process.env.VERCEL_REGION,\n      hasRapidApiTranscriptKey: !!process.env.RAPIDAPI_TRANSCRIPT_KEY,\n    })\n\n    // Primary: RapidAPI (works reliably on Vercel, avoids IP blocking)\n    if (process.env.RAPIDAPI_TRANSCRIPT_KEY) {\n      try {\n        console.log('[Transcript] Using RapidAPI as primary method...')\n        return await getTranscriptViaRapidAPI(videoId)\n      } catch (rapidApiError: any) {\n        console.error('[Transcript] RapidAPI failed:', {\n          message: rapidApiError?.message,\n          code: rapidApiError?.code,\n        })\n        // If it's a definitive NO_TRANSCRIPT error, don't try fallbacks\n        if (rapidApiError instanceof TranscriptError && rapidApiError.code === 'NO_TRANSCRIPT') {\n          throw rapidApiError\n        }\n        console.log('[Transcript] Falling back to direct library method...')\n      }\n    }\n\n    // Fallback: Direct library fetch (works locally, may fail on Vercel due to IP blocking)\n    let libItems: any[] | null = null\n    try {\n      console.log('[Transcript] Attempting library fetch with retry...')\n      libItems = await retryWithBackoff(\n        async () => YoutubeTranscript.fetchTranscript(videoId),\n        2, // Reduced retries to avoid timeout\n        500 // Shorter delays\n      )\n      console.log('[Transcript] Library fetch successful, items:', libItems?.length || 0)\n    } catch (fetchError: any) {\n      console.error('[Transcript] Library fetch failed:', {\n        message: fetchError?.message,\n        name: fetchError?.name,\n      })\n      console.log('[Transcript] Enabling timedtext fallback...')\n    }\n\n    let segments: TranscriptSegment[] | null = null\n    let language: string | undefined = undefined\n\n    if (Array.isArray(libItems) && libItems.length) {\n      segments = libItems.map((item: any) => ({\n        text: decodeHtmlEntities(item.text),\n        duration: Math.round((item.duration || 0) * 1000),\n        offset: Math.round((item.offset || 0) * 1000),\n      }))\n      language = (libItems as any)[0]?.lang || 'unknown'\n    } else {\n      const fb = await fallbackTimedtext(videoId)\n      if (fb && fb.segments.length) {\n        // Decode any entities that may appear in VTT/JSON3 text\n        segments = fb.segments.map((s) => ({\n          ...s,\n          text: decodeHtmlEntities(s.text),\n        }))\n        language = fb.language\n      }\n    }\n\n    if (!segments || !segments.length) {\n      console.error('[Transcript] No segments found for video:', videoId)\n      throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')\n    }\n\n    console.log('[Transcript] Successfully fetched transcript:', {\n      segmentCount: segments.length,\n      language,\n    })\n\n    const fullTranscript = segments\n      .map((s) => s.text)\n      .join(' ')\n      .replace(/\s+/g, ' ')\n      .trim()\n\n    return {\n      transcript: fullTranscript,\n      segments,\n      videoId,\n      language,\n    }\n  } catch (error: any) {\n    console.error('Transcript fetch error:', error)\n\n    if (error instanceof TranscriptError) {\n      throw error\n    }\n\n    throw new TranscriptError(error.message || 'Failed to fetch transcript', 'FETCH_ERROR')\n  }\n}\n
+import { extractVideoId } from './youtube'
+import { YoutubeTranscript } from '@danielxceron/youtube-transcript'
+import { getTranscriptViaRapidAPI } from './transcript-rapidapi'
+import { decodeHtmlEntities } from './html'
+
+export type TranscriptSegment = {
+  text: string
+  duration: number
+  offset: number
+}
+
+export type TranscriptResult = {
+  transcript: string
+  segments: TranscriptSegment[]
+  videoId?: string
+  language?: string
+  sourceUrl?: string
+  provider?: string
+}
+
+export class TranscriptError extends Error {
+  constructor(
+    message: string,
+    public code: string
+  ) {
+    super(message)
+    this.name = 'TranscriptError'
+  }
+}
+
+/**
+ * Retry helper function with exponential backoff
+ */
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<T> {
+  let lastError: any
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+
+      // Don't retry on these specific errors
+      if (error instanceof TranscriptError && error.code === 'INVALID_URL') {
+        throw error
+      }
+
+      // If this was the last attempt, throw the error
+      if (attempt === maxRetries - 1) {
+        throw error
+      }
+
+      // Calculate delay with exponential backoff
+      const delay = baseDelay * Math.pow(2, attempt)
+      console.log(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`)
+
+      // Wait before retrying
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+
+  throw lastError
+}
+
+// Build robust headers for YouTube requests
+function buildYouTubeHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9',
+    Accept: '*/*',
+    'Accept-Encoding': 'gzip, deflate, br',
+    Origin: 'https://www.youtube.com',
+    Referer: 'https://www.youtube.com/',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+  }
+
+  const cookies = process.env.YOUTUBE_COOKIES?.trim()
+  if (cookies) headers['Cookie'] = cookies
+  return headers
+}
+
+type TimedTextTrack = {
+  langCode: string
+  name?: string
+  kind?: string
+}
+
+async function fetchTimedtextTrackList(videoId: string): Promise<TimedTextTrack[]> {
+  const url = `https://www.youtube.com/api/timedtext?type=list&v=${encodeURIComponent(videoId)}&hl=en`
+  console.log('[Timedtext] Fetching track list for video:', videoId)
+  const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })
+  console.log('[Timedtext] Track list response status:', res.status)
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => 'no response body')
+    console.error('[Timedtext] Track list failed:', { status: res.status, body: errorText })
+    throw new TranscriptError(`Timedtext list failed: ${res.status}`, 'FETCH_ERROR')
+  }
+  const xml = await res.text()
+  console.log('[Timedtext] Track list XML length:', xml.length)
+  // Lightweight XML attribute parsing for <track ... /> elements
+  const tracks: TimedTextTrack[] = []
+  const trackTagRegex = /<track\b([^>]*?)\/>/g
+  let match: RegExpExecArray | null
+  while ((match = trackTagRegex.exec(xml))) {
+    const attrs = match[1]
+    const attributes: Record<string, string> = {}
+    const attrRegex = /(\w+)=("([^"]*)"|'([^']*)')/g
+    let a: RegExpExecArray | null
+    while ((a = attrRegex.exec(attrs))) {
+      const key = a[1]
+      const value = a[3] ?? a[4] ?? ''
+      attributes[key] = value
+    }
+    const langCode = attributes['lang_code'] || attributes['lang'] || ''
+    const name = attributes['name'] || undefined
+    const kind = attributes['kind'] || undefined
+    tracks.push({ langCode, name, kind })
+  }
+  return tracks
+}
+
+function pickPreferredTrack(tracks: TimedTextTrack[]): TimedTextTrack | null {
+  if (!tracks.length) return null
+  const preferred = ['en-US', 'en-GB', 'en']
+  for (const p of preferred) {
+    const exact = tracks.find((t) => t.langCode === p)
+    if (exact) return exact
+  }
+  const en = tracks.find((t) => t.langCode?.toLowerCase().startsWith('en'))
+  if (en) return en
+  return tracks[0]
+}
+
+type Json3Event = {
+  tStartMs?: number
+  dDurationMs?: number
+  segs?: { utf8: string }[]
+}
+
+async function fetchTimedtextJson3(videoId: string, track: TimedTextTrack) {
+  const params = new URLSearchParams({ v: videoId, lang: track.langCode, fmt: 'json3' })
+  if (track.name) params.set('name', track.name)
+  if (track.kind) params.set('kind', track.kind)
+  const url = `https://www.youtube.com/api/timedtext?${params.toString()}`
+
+  console.log('[Timedtext] Fetching JSON3 for lang:', track.langCode)
+  const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })
+  console.log('[Timedtext] JSON3 response status:', res.status)
+  if (!res.ok) return null
+
+  const contentType = res.headers.get('content-type') || ''
+  if (!contentType.includes('application/json')) {
+    try {
+      const text = await res.text()
+      return JSON.parse(text)
+    } catch {
+      return null
+    }
+  }
+  return res.json().catch(() => null)
+}
+
+function parseJson3ToSegments(json3: any): TranscriptSegment[] {
+  const events: Json3Event[] = Array.isArray(json3?.events) ? json3.events : []
+  const segments: TranscriptSegment[] = []
+  for (const ev of events) {
+    const text = (ev.segs || [])
+      .map((s) => (s && typeof s.utf8 === 'string' ? s.utf8 : ''))
+      .join('')
+      .trim()
+    if (!text) continue
+    const offset = Math.round(ev.tStartMs || 0)
+    const duration = Math.round(ev.dDurationMs || 0)
+    segments.push({ text, offset, duration })
+  }
+  return segments
+}
+
+function parseTimestampToMs(ts: string): number {
+  const m = ts.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/)
+  if (!m) return 0
+  const h = parseInt(m[1], 10)
+  const mi = parseInt(m[2], 10)
+  const s = parseInt(m[3], 10)
+  const ms = parseInt(m[4], 10)
+  return ((h * 60 + mi) * 60 + s) * 1000 + ms
+}
+
+function parseVttToSegments(vtt: string): TranscriptSegment[] {
+  const lines = vtt.split(/\r?\n/)
+  const segments: TranscriptSegment[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i].trim()
+    i++
+    if (!line) continue
+    if (/-->/.test(line)) {
+      const [start, end] = line.split(/\s+-->\s+/)
+      let textLines: string[] = []
+      while (i < lines.length && lines[i].trim()) {
+        textLines.push(lines[i].trim())
+        i++
+      }
+      const text = textLines.join(' ').trim()
+      const offset = parseTimestampToMs(start)
+      const duration = Math.max(parseTimestampToMs(end) - offset, 0)
+      if (text) segments.push({ text, offset, duration })
+    }
+  }
+  return segments
+}
+
+async function fetchTimedtextVtt(videoId: string, track: TimedTextTrack): Promise<string | null> {
+  const params = new URLSearchParams({ v: videoId, lang: track.langCode, fmt: 'vtt' })
+  if (track.name) params.set('name', track.name)
+  if (track.kind) params.set('kind', track.kind)
+  const url = `https://www.youtube.com/api/timedtext?${params.toString()}`
+  const res = await fetch(url, { headers: buildYouTubeHeaders(), cache: 'no-store' })
+  if (!res.ok) return null
+  const text = await res.text()
+  if (!text || !/^WEBVTT/m.test(text)) return null
+  return text
+}
+
+async function fallbackTimedtext(
+  videoId: string
+): Promise<{ segments: TranscriptSegment[]; language?: string } | null> {
+  try {
+    const tracks = await fetchTimedtextTrackList(videoId)
+    if (!tracks.length) return null
+    const track = pickPreferredTrack(tracks)
+    if (!track) return null
+
+    const json3 = await fetchTimedtextJson3(videoId, track)
+    if (json3) {
+      const segments = parseJson3ToSegments(json3)
+      if (segments.length) return { segments, language: track.langCode }
+    }
+
+    const vtt = await fetchTimedtextVtt(videoId, track)
+    if (vtt) {
+      const segments = parseVttToSegments(vtt)
+      if (segments.length) return { segments, language: track.langCode }
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function getTranscript(url: string): Promise<TranscriptResult> {
+  const videoId = extractVideoId(url)
+  if (!videoId) {
+    throw new TranscriptError('Invalid YouTube URL', 'INVALID_URL')
+  }
+
+  try {
+    console.log('[Transcript] Starting fetch for video ID:', videoId)
+    console.log('[Transcript] Environment:', {
+      nodeEnv: process.env.NODE_ENV,
+      vercel: process.env.VERCEL,
+      region: process.env.VERCEL_REGION,
+      hasRapidApiTranscriptKey: !!process.env.RAPIDAPI_TRANSCRIPT_KEY,
+    })
+
+    // Primary: RapidAPI (works reliably on Vercel, avoids IP blocking)
+    if (process.env.RAPIDAPI_TRANSCRIPT_KEY) {
+      try {
+        console.log('[Transcript] Using RapidAPI as primary method...')
+        return await getTranscriptViaRapidAPI(videoId)
+      } catch (rapidApiError: any) {
+        console.error('[Transcript] RapidAPI failed:', {
+          message: rapidApiError?.message,
+          code: rapidApiError?.code,
+        })
+        // If it's a definitive NO_TRANSCRIPT error, don't try fallbacks
+        if (rapidApiError instanceof TranscriptError && rapidApiError.code === 'NO_TRANSCRIPT') {
+          throw rapidApiError
+        }
+        console.log('[Transcript] Falling back to direct library method...')
+      }
+    }
+
+    // Fallback: Direct library fetch (works locally, may fail on Vercel due to IP blocking)
+    let libItems: any[] | null = null
+    try {
+      console.log('[Transcript] Attempting library fetch with retry...')
+      libItems = await retryWithBackoff(
+        async () => YoutubeTranscript.fetchTranscript(videoId),
+        2, // Reduced retries to avoid timeout
+        500 // Shorter delays
+      )
+      console.log('[Transcript] Library fetch successful, items:', libItems?.length || 0)
+    } catch (fetchError: any) {
+      console.error('[Transcript] Library fetch failed:', {
+        message: fetchError?.message,
+        name: fetchError?.name,
+      })
+      console.log('[Transcript] Enabling timedtext fallback...')
+    }
+
+    let segments: TranscriptSegment[] | null = null
+    let language: string | undefined = undefined
+
+    if (Array.isArray(libItems) && libItems.length) {
+      segments = libItems.map((item: any) => ({
+        text: decodeHtmlEntities(item.text),
+        duration: Math.round((item.duration || 0) * 1000),
+        offset: Math.round((item.offset || 0) * 1000),
+      }))
+      language = (libItems as any)[0]?.lang || 'unknown'
+    } else {
+      const fb = await fallbackTimedtext(videoId)
+      if (fb && fb.segments.length) {
+        // Decode any entities that may appear in VTT/JSON3 text
+        segments = fb.segments.map((s) => ({
+          ...s,
+          text: decodeHtmlEntities(s.text),
+        }))
+        language = fb.language
+      }
+    }
+
+    if (!segments || !segments.length) {
+      console.error('[Transcript] No segments found for video:', videoId)
+      throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')
+    }
+
+    console.log('[Transcript] Successfully fetched transcript:', {
+      segmentCount: segments.length,
+      language,
+    })
+
+    const fullTranscript = segments
+      .map((s) => s.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return {
+      transcript: fullTranscript,
+      segments,
+      videoId,
+      language,
+    }
+  } catch (error: any) {
+    console.error('Transcript fetch error:', error)
+
+    if (error instanceof TranscriptError) {
+      throw error
+    }
+
+    throw new TranscriptError(error.message || 'Failed to fetch transcript', 'FETCH_ERROR')
+  }
+}

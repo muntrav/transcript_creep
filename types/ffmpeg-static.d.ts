@@ -1,1 +1,4 @@
-declare module 'ffmpeg-static' {\n  const pathToFfmpeg: string\n  export default pathToFfmpeg\n}\n
+declare module 'ffmpeg-static' {
+  const pathToFfmpeg: string
+  export default pathToFfmpeg
+}

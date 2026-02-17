@@ -1,1 +1,4 @@
-declare module 'fluent-ffmpeg' {\n  const ffmpeg: any\n  export default ffmpeg\n}\n
+declare module 'fluent-ffmpeg' {
+  const ffmpeg: any
+  export default ffmpeg
+}

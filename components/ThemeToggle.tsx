@@ -1,1 +1,111 @@
-'use client'\n\nimport React, { useState } from 'react'\nimport { IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material'\nimport {\n  Brightness4 as DarkModeIcon,\n  Brightness7 as LightModeIcon,\n  SettingsBrightness as SystemModeIcon,\n  Check as CheckIcon,\n} from '@mui/icons-material'\nimport { useThemeMode } from '@/app/providers'\n\nexport default function ThemeToggle() {\n  const { mode, setMode, actualTheme } = useThemeMode()\n  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)\n  const open = Boolean(anchorEl)\n\n  const handleClick = (event: React.MouseEvent<HTMLElement>) => {\n    setAnchorEl(event.currentTarget)\n  }\n\n  const handleClose = () => {\n    setAnchorEl(null)\n  }\n\n  const handleModeSelect = (newMode: 'light' | 'dark' | 'system') => {\n    setMode(newMode)\n    handleClose()\n  }\n\n  // Icon to display based on actual theme\n  const ThemeIcon = actualTheme === 'dark' ? DarkModeIcon : LightModeIcon\n\n  return (\n    <>\n      <IconButton\n        onClick={handleClick}\n        aria-label="theme settings"\n        aria-controls={open ? 'theme-menu' : undefined}\n        aria-haspopup="true"\n        aria-expanded={open ? 'true' : undefined}\n        color="inherit"\n        sx={{\n          transition: 'all 0.3s ease',\n          '&:hover': {\n            transform: 'rotate(180deg)',\n          },\n        }}\n      >\n        <ThemeIcon />\n      </IconButton>\n\n      <Menu\n        id="theme-menu"\n        anchorEl={anchorEl}\n        open={open}\n        onClose={handleClose}\n        anchorOrigin={{\n          vertical: 'bottom',\n          horizontal: 'right',\n        }}\n        transformOrigin={{\n          vertical: 'top',\n          horizontal: 'right',\n        }}\n        PaperProps={{\n          sx: {\n            minWidth: 180,\n            mt: 1,\n          },\n        }}\n      >\n        <MenuItem onClick={() => handleModeSelect('light')}>\n          <ListItemIcon>\n            <LightModeIcon fontSize="small" />\n          </ListItemIcon>\n          <ListItemText>Light</ListItemText>\n          {mode === 'light' && (\n            <ListItemIcon>\n              <CheckIcon fontSize="small" />\n            </ListItemIcon>\n          )}\n        </MenuItem>\n\n        <MenuItem onClick={() => handleModeSelect('dark')}>\n          <ListItemIcon>\n            <DarkModeIcon fontSize="small" />\n          </ListItemIcon>\n          <ListItemText>Dark</ListItemText>\n          {mode === 'dark' && (\n            <ListItemIcon>\n              <CheckIcon fontSize="small" />\n            </ListItemIcon>\n          )}\n        </MenuItem>\n\n        <MenuItem onClick={() => handleModeSelect('system')}>\n          <ListItemIcon>\n            <SystemModeIcon fontSize="small" />\n          </ListItemIcon>\n          <ListItemText>System</ListItemText>\n          {mode === 'system' && (\n            <ListItemIcon>\n              <CheckIcon fontSize="small" />\n            </ListItemIcon>\n          )}\n        </MenuItem>\n      </Menu>\n    </>\n  )\n}\n
+'use client'
+
+import React, { useState } from 'react'
+import { IconButton, Menu, MenuItem, ListItemIcon, ListItemText } from '@mui/material'
+import {
+  Brightness4 as DarkModeIcon,
+  Brightness7 as LightModeIcon,
+  SettingsBrightness as SystemModeIcon,
+  Check as CheckIcon,
+} from '@mui/icons-material'
+import { useThemeMode } from '@/app/providers'
+
+export default function ThemeToggle() {
+  const { mode, setMode, actualTheme } = useThemeMode()
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+  const open = Boolean(anchorEl)
+
+  const handleClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget)
+  }
+
+  const handleClose = () => {
+    setAnchorEl(null)
+  }
+
+  const handleModeSelect = (newMode: 'light' | 'dark' | 'system') => {
+    setMode(newMode)
+    handleClose()
+  }
+
+  // Icon to display based on actual theme
+  const ThemeIcon = actualTheme === 'dark' ? DarkModeIcon : LightModeIcon
+
+  return (
+    <>
+      <IconButton
+        onClick={handleClick}
+        aria-label="theme settings"
+        aria-controls={open ? 'theme-menu' : undefined}
+        aria-haspopup="true"
+        aria-expanded={open ? 'true' : undefined}
+        color="inherit"
+        sx={{
+          transition: 'all 0.3s ease',
+          '&:hover': {
+            transform: 'rotate(180deg)',
+          },
+        }}
+      >
+        <ThemeIcon />
+      </IconButton>
+
+      <Menu
+        id="theme-menu"
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'right',
+        }}
+        transformOrigin={{
+          vertical: 'top',
+          horizontal: 'right',
+        }}
+        PaperProps={{
+          sx: {
+            minWidth: 180,
+            mt: 1,
+          },
+        }}
+      >
+        <MenuItem onClick={() => handleModeSelect('light')}>
+          <ListItemIcon>
+            <LightModeIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Light</ListItemText>
+          {mode === 'light' && (
+            <ListItemIcon>
+              <CheckIcon fontSize="small" />
+            </ListItemIcon>
+          )}
+        </MenuItem>
+
+        <MenuItem onClick={() => handleModeSelect('dark')}>
+          <ListItemIcon>
+            <DarkModeIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Dark</ListItemText>
+          {mode === 'dark' && (
+            <ListItemIcon>
+              <CheckIcon fontSize="small" />
+            </ListItemIcon>
+          )}
+        </MenuItem>
+
+        <MenuItem onClick={() => handleModeSelect('system')}>
+          <ListItemIcon>
+            <SystemModeIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>System</ListItemText>
+          {mode === 'system' && (
+            <ListItemIcon>
+              <CheckIcon fontSize="small" />
+            </ListItemIcon>
+          )}
+        </MenuItem>
+      </Menu>
+    </>
+  )
+}

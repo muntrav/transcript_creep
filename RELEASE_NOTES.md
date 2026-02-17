@@ -1,1 +1,26 @@
-# Release Notes — Transcriptcreep v2\n\nRelease Date: 2026-02-17\n\n## Highlights\n- Transcript extraction now supports Shorts, Reels, and TikTok links.\n- AI summaries generate a structured learning document with sections, takeaways, and action plan.\n- Summary can be copied with a single click.\n\n## Features\n- Shorts/Reels/TikTok transcript extraction via Supadata.\n- Summary API via OpenRouter free router (`openrouter/free`).\n- New summary UI panel with title, overview, sections, key takeaways, and action plan.\n- Updated transcript validation to support YouTube, TikTok, and Instagram.\n\n## Configuration\nAdd the following environment variables:\n- `SUPADATA_API_KEY`\n- `OPENROUTER_API_KEY`\n\n## Notes\n- OpenRouter free tier is rate-limited.\n- Supadata may respond with async processing (retry if needed).\n\n## Known Limitations\n- Summary input is truncated for very long transcripts (to keep requests reliable).
+# Release Notes — Transcriptcreep v2
+
+Release Date: 2026-02-17
+
+## Highlights
+- Transcript extraction now supports Shorts, Reels, and TikTok links.
+- AI summaries generate a structured learning document with sections, takeaways, and action plan.
+- Summary can be copied with a single click.
+
+## Features
+- Shorts/Reels/TikTok transcript extraction via Supadata.
+- Summary API via OpenRouter free router (`openrouter/free`).
+- New summary UI panel with title, overview, sections, key takeaways, and action plan.
+- Updated transcript validation to support YouTube, TikTok, and Instagram.
+
+## Configuration
+Add the following environment variables:
+- `SUPADATA_API_KEY`
+- `OPENROUTER_API_KEY`
+
+## Notes
+- OpenRouter free tier is rate-limited.
+- Supadata may respond with async processing (retry if needed).
+
+## Known Limitations
+- Summary input is truncated for very long transcripts (to keep requests reliable).

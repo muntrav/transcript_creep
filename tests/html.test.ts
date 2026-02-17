@@ -1,1 +1,22 @@
-import { describe, it, expect } from 'vitest'\nimport { decodeHtmlEntities } from '@/lib/html'\n\ndescribe('decodeHtmlEntities', () => {\n  it('decodes common HTML entities', () => {\n    const src = 'we&#39;re "quoted" &amp; less &lt; more &gt; space&nbsp;ok'\n    const out = decodeHtmlEntities(src)\n    expect(out).toBe('we\'re "quoted" & less < more > space ok')\n  })\n\n  it('handles double-encoded entities', () => {\n    const src = '&amp;#39; and &amp;quot; and &amp;amp;'\n    const out = decodeHtmlEntities(src)\n    expect(out).toBe('\' and " and &')\n  })\n\n  it('is idempotent for already-decoded text', () => {\n    const src = "we're fine"\n    const out = decodeHtmlEntities(src)\n    expect(out).toBe(src)\n  })\n})\n
+import { describe, it, expect } from 'vitest'
+import { decodeHtmlEntities } from '@/lib/html'
+
+describe('decodeHtmlEntities', () => {
+  it('decodes common HTML entities', () => {
+    const src = 'we&#39;re "quoted" &amp; less &lt; more &gt; space&nbsp;ok'
+    const out = decodeHtmlEntities(src)
+    expect(out).toBe('we\'re "quoted" & less < more > space ok')
+  })
+
+  it('handles double-encoded entities', () => {
+    const src = '&amp;#39; and &amp;quot; and &amp;amp;'
+    const out = decodeHtmlEntities(src)
+    expect(out).toBe('\' and " and &')
+  })
+
+  it('is idempotent for already-decoded text', () => {
+    const src = "we're fine"
+    const out = decodeHtmlEntities(src)
+    expect(out).toBe(src)
+  })
+})

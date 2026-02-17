@@ -1,1 +1,10 @@
-{\n  "extends": ["next/core-web-vitals", "prettier"],\n  "plugins": ["prettier"],\n  "rules": {\n    "prettier/prettier": "error",\n    "no-unused-vars": "off",\n    "@typescript-eslint/no-explicit-any": "off",\n    "@typescript-eslint/no-unused-vars": "off"\n  }\n}\n
+{
+  "extends": ["next/core-web-vitals", "prettier"],
+  "plugins": ["prettier"],
+  "rules": {
+    "prettier/prettier": "error",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unused-vars": "off"
+  }
+}

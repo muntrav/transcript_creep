@@ -1,1 +1,38 @@
-'use client'\nimport { ToggleButton, ToggleButtonGroup } from '@mui/material'\nimport { usePathname, useRouter } from 'next/navigation'\n\nexport default function PageSwitcher() {\n  const router = useRouter()\n  const pathname = usePathname()\n  const value = pathname === '/shorts' ? 'shorts' : 'videos'\n\n  const pillSx = {\n    borderRadius: 9999,\n    backgroundColor: 'rgba(255,255,255,0.2)',\n    '& .MuiToggleButtonGroup-grouped': {\n      border: 0,\n      px: 2,\n      color: 'white',\n      '&.Mui-selected': { color: 'primary.main', backgroundColor: 'white' },\n      '&:not(:first-of-type)': { borderRadius: '9999px' },\n      '&:first-of-type': { borderRadius: '9999px' },\n    },\n  } as const\n\n  return (\n    <ToggleButtonGroup\n      value={value}\n      exclusive\n      size="small"\n      onChange={(_e, v) => {\n        if (!v) return\n        router.push(v === 'shorts' ? '/shorts' : '/')\n      }}\n      sx={{ ...pillSx, maxWidth: 280 }}\n    >\n      <ToggleButton value="videos">Videos</ToggleButton>\n      <ToggleButton value="shorts">Shorts</ToggleButton>\n    </ToggleButtonGroup>\n  )\n}\n
+'use client'
+import { ToggleButton, ToggleButtonGroup } from '@mui/material'
+import { usePathname, useRouter } from 'next/navigation'
+
+export default function PageSwitcher() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const value = pathname === '/shorts' ? 'shorts' : 'videos'
+
+  const pillSx = {
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    '& .MuiToggleButtonGroup-grouped': {
+      border: 0,
+      px: 2,
+      color: 'white',
+      '&.Mui-selected': { color: 'primary.main', backgroundColor: 'white' },
+      '&:not(:first-of-type)': { borderRadius: '9999px' },
+      '&:first-of-type': { borderRadius: '9999px' },
+    },
+  } as const
+
+  return (
+    <ToggleButtonGroup
+      value={value}
+      exclusive
+      size="small"
+      onChange={(_e, v) => {
+        if (!v) return
+        router.push(v === 'shorts' ? '/shorts' : '/')
+      }}
+      sx={{ ...pillSx, maxWidth: 280 }}
+    >
+      <ToggleButton value="videos">Videos</ToggleButton>
+      <ToggleButton value="shorts">Shorts</ToggleButton>
+    </ToggleButtonGroup>
+  )
+}

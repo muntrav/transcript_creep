@@ -1,1 +1,245 @@
-export type ShortsInfo = {\n  sourceUrl: string\n  title?: string\n  thumbnail?: string\n  videoUrl: string\n  durationSeconds?: number\n}\n\nconst RAPID_HOST = 'instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com'\n// According to provider docs, the universal endpoint is /get-info-rapidapi?url=...\nconst RAPID_BASE = `https://${RAPID_HOST}/get-info-rapidapi`\n\nfunction looksLikeUrl(value: unknown): value is string {\n  return typeof value === 'string' && /^https?:\/\//i.test(value)\n}\n\nfunction isVideoUrl(u: string): boolean {\n  return (\n    /\.(mp4|mov|m4v|webm)(\?|#|$)/i.test(u) ||\n    /video/.test(u) ||\n    /m3u8/i.test(u) ||\n    /googlevideo\./i.test(u)\n  )\n}\n\nfunction isImageUrl(u: string): boolean {\n  return /\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(u) || /image/.test(u)\n}\n\nfunction findFirstMatchingUrl(obj: any, predicate: (u: string) => boolean): string | undefined {\n  if (!obj) return undefined\n  if (looksLikeUrl(obj) && predicate(obj)) return obj\n  if (Array.isArray(obj)) {\n    for (const item of obj) {\n      const found = findFirstMatchingUrl(item, predicate)\n      if (found) return found\n    }\n    return undefined\n  }\n  if (typeof obj === 'object') {\n    for (const key of Object.keys(obj)) {\n      const val = (obj as any)[key]\n      // Heuristic: common video/url property names\n      if (typeof val === 'string' && looksLikeUrl(val) && predicate(val)) return val\n      if (key.toLowerCase().includes('video') || key.toLowerCase().includes('url')) {\n        const foundInKey = findFirstMatchingUrl(val, predicate)\n        if (foundInKey) return foundInKey\n      }\n      const found = findFirstMatchingUrl(val, predicate)\n      if (found) return found\n    }\n  }\n  return undefined\n}\n\nexport function sanitizeFilename(input: string, fallback = 'file'): string {\n  const name = (input || '').toString().trim() || fallback\n  return name\n    .replace(/[\\/:*?"<>|\n\r]+/g, ' ')\n    .replace(/\s+/g, ' ')\n    .trim()\n}\n\nfunction parseDurationToSeconds(val: any): number | undefined {\n  if (val == null) return undefined\n  if (typeof val === 'number' && isFinite(val)) return val\n  if (typeof val === 'string') {\n    // Try HH:MM:SS or MM:SS\n    const m = val.trim().match(/^(?:([0-9]{1,2}):)?([0-5]?[0-9]):([0-5]?[0-9])$/)\n    if (m) {\n      const h = parseInt(m[1] || '0', 10)\n      const mi = parseInt(m[2] || '0', 10)\n      const s = parseInt(m[3] || '0', 10)\n      return h * 3600 + mi * 60 + s\n    }\n    // Try numeric string in seconds or ms\n    const n = Number(val)\n    if (!Number.isNaN(n)) {\n      return n > 10000 ? Math.round(n / 1000) : Math.round(n)\n    }\n  }\n  return undefined\n}\n\n// Ensures header-safe ASCII filename and provides RFC 5987 filename* for UTF-8\nexport function buildContentDisposition(\n  baseName: string | undefined,\n  extWithDot: string,\n  fallback = 'download'\n) {\n  const base = sanitizeFilename(baseName || fallback, fallback)\n  const ext = extWithDot.startsWith('.') ? extWithDot : `.${extWithDot}`\n\n  // ASCII fallback: strip diacritics and non-ASCII\n  const ascii =\n    base\n      .normalize('NFKD')\n      .replace(/[\u0300-\u036f]/g, '')\n      .replace(/[^\x20-\x7E]/g, '')\n      .trim() || fallback\n\n  const filenameAscii = `${ascii}${ext}`\n  const filenameUtf8 = encodeURIComponent(`${base}${ext}`)\n  return `attachment; filename="${filenameAscii}"; filename*=UTF-8''${filenameUtf8}`\n}\n\nasync function tryQuery(url: string, _param: string, key: string) {\n  // Always use documented endpoint: /get-info-rapidapi?url=...\n  const reqUrl = `${RAPID_BASE}?url=${encodeURIComponent(url)}`\n  const res = await fetch(reqUrl, {\n    method: 'GET',\n    headers: {\n      'x-rapidapi-host': RAPID_HOST,\n      'x-rapidapi-key': key,\n    },\n    // Avoid caching\n    cache: 'no-store',\n  })\n  const contentType = res.headers.get('content-type') || ''\n  const bodyText = await res.text().catch(() => '')\n  if (!res.ok) {\n    throw new Error(\n      `RapidAPI request failed: ${res.status} ${res.statusText}; ct=${contentType}; body=${bodyText.slice(0, 200)}`\n    )\n  }\n  try {\n    return JSON.parse(bodyText)\n  } catch {\n    // Not JSON; try to extract URLs\n    const urls = Array.from(bodyText.matchAll(/https?:[^\s"']+/g)).map((m) => m[0])\n    return { extracted: urls }\n  }\n}\n\nexport async function fetchShortsInfo(sourceUrl: string): Promise<ShortsInfo> {\n  // Special-case YouTube (including Shorts) via YTStream API for reliability\n  try {\n    const { extractVideoId } = await import('./youtube')\n    const vid = extractVideoId(sourceUrl)\n    if (vid) {\n      const ytKey =\n        process.env.RAPIDAPI_KEY ||\n        process.env.RAPIDAPI_YTSTREAM_KEY ||\n        process.env.RAPIDAPI_SHORTS_KEY\n      if (!ytKey) throw new Error('RAPIDAPI_KEY not configured for YouTube')\n      const host = 'ytstream-download-youtube-videos.p.rapidapi.com'\n      const url = 'https://' + host + '/dl?id=' + encodeURIComponent(vid)\n      const res = await fetch(url, {\n        method: 'GET',\n        headers: { 'x-rapidapi-host': host, 'x-rapidapi-key': ytKey },\n        cache: 'no-store',\n      })\n      const text = await res.text().catch(() => '')\n      if (!res.ok) {\n        throw new Error(\n          'YT RapidAPI failed: ' +\n            res.status +\n            ' ' +\n            res.statusText +\n            '; body=' +\n            text.slice(0, 200)\n        )\n      }\n      let data: any\n      try {\n        data = JSON.parse(text)\n      } catch {\n        data = { raw: text }\n      }\n      let videoUrl = findFirstMatchingUrl(data, isVideoUrl)\n      if (!videoUrl && Array.isArray(data?.link)) {\n        videoUrl = (data.link as any[])\n          .map((f: any) => f?.url || f?.link || f)\n          .find((u: string) => typeof u === 'string' && isVideoUrl(u))\n      }\n      if (!videoUrl && Array.isArray(data?.formats)) {\n        videoUrl = (data.formats as any[])\n          .map((f: any) => f?.url || f?.link || f)\n          .find((u: string) => typeof u === 'string' && isVideoUrl(u))\n      }\n      if (!videoUrl) throw new Error('No downloadable video URL found for YouTube')\n      const title = (data?.title || (data?.result && data.result.title) || '').toString()\n      const durationSeconds =\n        parseDurationToSeconds(data?.lengthSeconds) ||\n        parseDurationToSeconds(data?.result?.lengthSeconds) ||\n        parseDurationToSeconds(data?.result?.duration) ||\n        parseDurationToSeconds(data?.duration)\n      const thumb = findFirstMatchingUrl(data, isImageUrl)\n      return { sourceUrl, videoUrl, title: title || undefined, thumbnail: thumb, durationSeconds }\n    }\n  } catch (e) {\n    // If YouTube flow fails, fall through to generic shorts API\n    console.error('[Shorts] YouTube flow failed, falling back to generic API', e)\n  }\n\n  const key = process.env.RAPIDAPI_SHORTS_KEY || process.env.RAPIDAPI_INSTAGRAM_KEY\n  if (!key) {\n    throw new Error('RAPIDAPI_SHORTS_KEY not configured')\n  }\n\n  // The provider expects only: /get-info-rapidapi?url=...\n  const paramsToTry = ['url']\n  let data: any | null = null\n  let lastError: any = null\n  for (const p of paramsToTry) {\n    try {\n      data = await tryQuery(sourceUrl, p, key)\n      if (data) break\n    } catch (e) {\n      console.error('[Shorts] RapidAPI error for param', p, e)\n      lastError = e\n    }\n  }\n  if (!data) {\n    throw lastError || new Error('RapidAPI returned no data')\n  }\n\n  let videoUrl = findFirstMatchingUrl(data, isVideoUrl)\n  if (!videoUrl && Array.isArray(data?.extracted)) {\n    videoUrl = (data.extracted as string[]).find((u) => isVideoUrl(u))\n  }\n  if (!videoUrl) {\n    // As a fallback, pick any URL if it exists\n    const anyUrl = findFirstMatchingUrl(data, (u) => looksLikeUrl(u))\n    if (anyUrl) {\n      // hope it's a playable video\n      return { sourceUrl, videoUrl: anyUrl }\n    }\n    throw new Error('No video URL found in RapidAPI response')\n  }\n  const thumbnail = findFirstMatchingUrl(data, isImageUrl)\n  const title = (data.title || data.caption || data.description || data.username || '').toString()\n  const durationSeconds =\n    parseDurationToSeconds((data as any)?.duration) ||\n    parseDurationToSeconds((data as any)?.duration_ms) ||\n    parseDurationToSeconds((data as any)?.lengthSeconds)\n\n  return {\n    sourceUrl,\n    videoUrl,\n    thumbnail,\n    title: title || undefined,\n    durationSeconds,\n  }\n}\n
+export type ShortsInfo = {
+  sourceUrl: string
+  title?: string
+  thumbnail?: string
+  videoUrl: string
+  durationSeconds?: number
+}
+
+const RAPID_HOST = 'instagram-downloader-download-instagram-videos-stories1.p.rapidapi.com'
+// According to provider docs, the universal endpoint is /get-info-rapidapi?url=...
+const RAPID_BASE = `https://${RAPID_HOST}/get-info-rapidapi`
+
+function looksLikeUrl(value: unknown): value is string {
+  return typeof value === 'string' && /^https?:\/\//i.test(value)
+}
+
+function isVideoUrl(u: string): boolean {
+  return (
+    /\.(mp4|mov|m4v|webm)(\?|#|$)/i.test(u) ||
+    /video/.test(u) ||
+    /m3u8/i.test(u) ||
+    /googlevideo\./i.test(u)
+  )
+}
+
+function isImageUrl(u: string): boolean {
+  return /\.(jpg|jpeg|png|webp)(\?|#|$)/i.test(u) || /image/.test(u)
+}
+
+function findFirstMatchingUrl(obj: any, predicate: (u: string) => boolean): string | undefined {
+  if (!obj) return undefined
+  if (looksLikeUrl(obj) && predicate(obj)) return obj
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findFirstMatchingUrl(item, predicate)
+      if (found) return found
+    }
+    return undefined
+  }
+  if (typeof obj === 'object') {
+    for (const key of Object.keys(obj)) {
+      const val = (obj as any)[key]
+      // Heuristic: common video/url property names
+      if (typeof val === 'string' && looksLikeUrl(val) && predicate(val)) return val
+      if (key.toLowerCase().includes('video') || key.toLowerCase().includes('url')) {
+        const foundInKey = findFirstMatchingUrl(val, predicate)
+        if (foundInKey) return foundInKey
+      }
+      const found = findFirstMatchingUrl(val, predicate)
+      if (found) return found
+    }
+  }
+  return undefined
+}
+
+export function sanitizeFilename(input: string, fallback = 'file'): string {
+  const name = (input || '').toString().trim() || fallback
+  return name
+    .replace(/[\\/:*?"<>|\n\r]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function parseDurationToSeconds(val: any): number | undefined {
+  if (val == null) return undefined
+  if (typeof val === 'number' && isFinite(val)) return val
+  if (typeof val === 'string') {
+    // Try HH:MM:SS or MM:SS
+    const m = val.trim().match(/^(?:([0-9]{1,2}):)?([0-5]?[0-9]):([0-5]?[0-9])$/)
+    if (m) {
+      const h = parseInt(m[1] || '0', 10)
+      const mi = parseInt(m[2] || '0', 10)
+      const s = parseInt(m[3] || '0', 10)
+      return h * 3600 + mi * 60 + s
+    }
+    // Try numeric string in seconds or ms
+    const n = Number(val)
+    if (!Number.isNaN(n)) {
+      return n > 10000 ? Math.round(n / 1000) : Math.round(n)
+    }
+  }
+  return undefined
+}
+
+// Ensures header-safe ASCII filename and provides RFC 5987 filename* for UTF-8
+export function buildContentDisposition(
+  baseName: string | undefined,
+  extWithDot: string,
+  fallback = 'download'
+) {
+  const base = sanitizeFilename(baseName || fallback, fallback)
+  const ext = extWithDot.startsWith('.') ? extWithDot : `.${extWithDot}`
+
+  // ASCII fallback: strip diacritics and non-ASCII
+  const ascii =
+    base
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\x20-\x7E]/g, '')
+      .trim() || fallback
+
+  const filenameAscii = `${ascii}${ext}`
+  const filenameUtf8 = encodeURIComponent(`${base}${ext}`)
+  return `attachment; filename="${filenameAscii}"; filename*=UTF-8''${filenameUtf8}`
+}
+
+async function tryQuery(url: string, _param: string, key: string) {
+  // Always use documented endpoint: /get-info-rapidapi?url=...
+  const reqUrl = `${RAPID_BASE}?url=${encodeURIComponent(url)}`
+  const res = await fetch(reqUrl, {
+    method: 'GET',
+    headers: {
+      'x-rapidapi-host': RAPID_HOST,
+      'x-rapidapi-key': key,
+    },
+    // Avoid caching
+    cache: 'no-store',
+  })
+  const contentType = res.headers.get('content-type') || ''
+  const bodyText = await res.text().catch(() => '')
+  if (!res.ok) {
+    throw new Error(
+      `RapidAPI request failed: ${res.status} ${res.statusText}; ct=${contentType}; body=${bodyText.slice(0, 200)}`
+    )
+  }
+  try {
+    return JSON.parse(bodyText)
+  } catch {
+    // Not JSON; try to extract URLs
+    const urls = Array.from(bodyText.matchAll(/https?:[^\s"']+/g)).map((m) => m[0])
+    return { extracted: urls }
+  }
+}
+
+export async function fetchShortsInfo(sourceUrl: string): Promise<ShortsInfo> {
+  // Special-case YouTube (including Shorts) via YTStream API for reliability
+  try {
+    const { extractVideoId } = await import('./youtube')
+    const vid = extractVideoId(sourceUrl)
+    if (vid) {
+      const ytKey =
+        process.env.RAPIDAPI_KEY ||
+        process.env.RAPIDAPI_YTSTREAM_KEY ||
+        process.env.RAPIDAPI_SHORTS_KEY
+      if (!ytKey) throw new Error('RAPIDAPI_KEY not configured for YouTube')
+      const host = 'ytstream-download-youtube-videos.p.rapidapi.com'
+      const url = 'https://' + host + '/dl?id=' + encodeURIComponent(vid)
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'x-rapidapi-host': host, 'x-rapidapi-key': ytKey },
+        cache: 'no-store',
+      })
+      const text = await res.text().catch(() => '')
+      if (!res.ok) {
+        throw new Error(
+          'YT RapidAPI failed: ' +
+            res.status +
+            ' ' +
+            res.statusText +
+            '; body=' +
+            text.slice(0, 200)
+        )
+      }
+      let data: any
+      try {
+        data = JSON.parse(text)
+      } catch {
+        data = { raw: text }
+      }
+      let videoUrl = findFirstMatchingUrl(data, isVideoUrl)
+      if (!videoUrl && Array.isArray(data?.link)) {
+        videoUrl = (data.link as any[])
+          .map((f: any) => f?.url || f?.link || f)
+          .find((u: string) => typeof u === 'string' && isVideoUrl(u))
+      }
+      if (!videoUrl && Array.isArray(data?.formats)) {
+        videoUrl = (data.formats as any[])
+          .map((f: any) => f?.url || f?.link || f)
+          .find((u: string) => typeof u === 'string' && isVideoUrl(u))
+      }
+      if (!videoUrl) throw new Error('No downloadable video URL found for YouTube')
+      const title = (data?.title || (data?.result && data.result.title) || '').toString()
+      const durationSeconds =
+        parseDurationToSeconds(data?.lengthSeconds) ||
+        parseDurationToSeconds(data?.result?.lengthSeconds) ||
+        parseDurationToSeconds(data?.result?.duration) ||
+        parseDurationToSeconds(data?.duration)
+      const thumb = findFirstMatchingUrl(data, isImageUrl)
+      return { sourceUrl, videoUrl, title: title || undefined, thumbnail: thumb, durationSeconds }
+    }
+  } catch (e) {
+    // If YouTube flow fails, fall through to generic shorts API
+    console.error('[Shorts] YouTube flow failed, falling back to generic API', e)
+  }
+
+  const key = process.env.RAPIDAPI_SHORTS_KEY || process.env.RAPIDAPI_INSTAGRAM_KEY
+  if (!key) {
+    throw new Error('RAPIDAPI_SHORTS_KEY not configured')
+  }
+
+  // The provider expects only: /get-info-rapidapi?url=...
+  const paramsToTry = ['url']
+  let data: any | null = null
+  let lastError: any = null
+  for (const p of paramsToTry) {
+    try {
+      data = await tryQuery(sourceUrl, p, key)
+      if (data) break
+    } catch (e) {
+      console.error('[Shorts] RapidAPI error for param', p, e)
+      lastError = e
+    }
+  }
+  if (!data) {
+    throw lastError || new Error('RapidAPI returned no data')
+  }
+
+  let videoUrl = findFirstMatchingUrl(data, isVideoUrl)
+  if (!videoUrl && Array.isArray(data?.extracted)) {
+    videoUrl = (data.extracted as string[]).find((u) => isVideoUrl(u))
+  }
+  if (!videoUrl) {
+    // As a fallback, pick any URL if it exists
+    const anyUrl = findFirstMatchingUrl(data, (u) => looksLikeUrl(u))
+    if (anyUrl) {
+      // hope it's a playable video
+      return { sourceUrl, videoUrl: anyUrl }
+    }
+    throw new Error('No video URL found in RapidAPI response')
+  }
+  const thumbnail = findFirstMatchingUrl(data, isImageUrl)
+  const title = (data.title || data.caption || data.description || data.username || '').toString()
+  const durationSeconds =
+    parseDurationToSeconds((data as any)?.duration) ||
+    parseDurationToSeconds((data as any)?.duration_ms) ||
+    parseDurationToSeconds((data as any)?.lengthSeconds)
+
+  return {
+    sourceUrl,
+    videoUrl,
+    thumbnail,
+    title: title || undefined,
+    durationSeconds,
+  }
+}

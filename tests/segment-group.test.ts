@@ -1,1 +1,20 @@
-import { describe, it, expect } from 'vitest'\nimport { groupSegmentsByInterval } from '@/lib/segment-group'\n\ndescribe('groupSegmentsByInterval', () => {\n  it('groups segments into 10-second buckets and merges text', () => {\n    const segments = [\n      { text: 'Hello', duration: 1000, offset: 1200 }, // 0-10s bucket\n      { text: 'world', duration: 800, offset: 2500 }, // 0-10s bucket\n      { text: 'Next', duration: 1200, offset: 10_200 }, // 10-20s bucket\n      { text: 'bucket', duration: 500, offset: 19_999 }, // 10-20s bucket\n      { text: 'Third', duration: 500, offset: 20_000 }, // 20-30s bucket\n    ]\n\n    const buckets = groupSegmentsByInterval(segments as any, 10_000)\n    expect(buckets.map((b) => b.startMs)).toEqual([0, 10_000, 20_000])\n    expect(buckets[0].text).toBe('Hello world')\n    expect(buckets[1].text).toBe('Next bucket')\n    expect(buckets[2].text).toBe('Third')\n  })\n})\n
+import { describe, it, expect } from 'vitest'
+import { groupSegmentsByInterval } from '@/lib/segment-group'
+
+describe('groupSegmentsByInterval', () => {
+  it('groups segments into 10-second buckets and merges text', () => {
+    const segments = [
+      { text: 'Hello', duration: 1000, offset: 1200 }, // 0-10s bucket
+      { text: 'world', duration: 800, offset: 2500 }, // 0-10s bucket
+      { text: 'Next', duration: 1200, offset: 10_200 }, // 10-20s bucket
+      { text: 'bucket', duration: 500, offset: 19_999 }, // 10-20s bucket
+      { text: 'Third', duration: 500, offset: 20_000 }, // 20-30s bucket
+    ]
+
+    const buckets = groupSegmentsByInterval(segments as any, 10_000)
+    expect(buckets.map((b) => b.startMs)).toEqual([0, 10_000, 20_000])
+    expect(buckets[0].text).toBe('Hello world')
+    expect(buckets[1].text).toBe('Next bucket')
+    expect(buckets[2].text).toBe('Third')
+  })
+})

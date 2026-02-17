@@ -1,1 +1,18 @@
-/// <reference types="vitest" />\nimport { defineConfig } from 'vitest/config'\nimport react from '@vitejs/plugin-react'\nimport { resolve } from 'path'\n\nexport default defineConfig({\n  plugins: [react()],\n  test: {\n    environment: 'jsdom',\n    include: ['tests/**/*.{test,spec}.{ts,tsx}'],\n    globals: true,\n  },\n  resolve: {\n    alias: {\n      '@': resolve(__dirname, './'),\n    },\n  },\n})\n
+/// <reference types="vitest" />
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    include: ['tests/**/*.{test,spec}.{ts,tsx}'],
+    globals: true,
+  },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, './'),
+    },
+  },
+})

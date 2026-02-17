@@ -1,1 +1,19 @@
-import './globals.css'\nimport React from 'react'\nimport { ThemeProvider } from './providers'\n\nexport const metadata = {\n  title: 'Transcriptcreep',\n  description: 'Extract and view YouTube transcripts',\n  icons: { icon: [{ url: '/icon.png', type: 'image/png' }] },\n}\n\nexport default function RootLayout({ children }: { children: React.ReactNode }) {\n  return (\n    <html lang="en">\n      <body>\n        <ThemeProvider>{children}</ThemeProvider>\n      </body>\n    </html>\n  )\n}\n
+import './globals.css'
+import React from 'react'
+import { ThemeProvider } from './providers'
+
+export const metadata = {
+  title: 'Transcriptcreep',
+  description: 'Extract and view YouTube transcripts',
+  icons: { icon: [{ url: '/icon.png', type: 'image/png' }] },
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
+      </body>
+    </html>
+  )
+}

@@ -1,1 +1,20 @@
-export function decodeHtmlEntities(text: string): string {\n  if (!text) return ''\n  return (\n    text\n      // Handle double-encoded entities first\n      .replace(/&amp;#39;/g, "'")\n      .replace(/&amp;quot;/g, '"')\n      .replace(/&amp;amp;/g, '&')\n      .replace(/&amp;lt;/g, '<')\n      .replace(/&amp;gt;/g, '>')\n      // Then handle single-encoded entities\n      .replace(/&#39;/g, "'")\n      .replace(/&quot;/g, '"')\n      .replace(/&apos;/g, "'")\n      .replace(/&amp;/g, '&')\n      .replace(/&lt;/g, '<')\n      .replace(/&gt;/g, '>')\n      .replace(/&nbsp;/g, ' ')\n  )\n}\n
+export function decodeHtmlEntities(text: string): string {
+  if (!text) return ''
+  return (
+    text
+      // Handle double-encoded entities first
+      .replace(/&amp;#39;/g, "'")
+      .replace(/&amp;quot;/g, '"')
+      .replace(/&amp;amp;/g, '&')
+      .replace(/&amp;lt;/g, '<')
+      .replace(/&amp;gt;/g, '>')
+      // Then handle single-encoded entities
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&nbsp;/g, ' ')
+  )
+}

@@ -1,1 +1,863 @@
-'use client'\n\nimport React, { useState, useMemo } from 'react'\nimport Image from 'next/image'\nimport {\n  Container,\n  Box,\n  Typography,\n  TextField,\n  Button,\n  Card,\n  CardContent,\n  CardActions,\n  Grid,\n  IconButton,\n  Menu,\n  MenuItem,\n  Alert,\n  Snackbar,\n  Chip,\n  Divider,\n  Stack,\n  AppBar,\n  Toolbar,\n  Paper,\n  CircularProgress,\n} from '@mui/material'\nimport {\n  Send as SendIcon,\n  ContentCopy as CopyIcon,\n  Download as DownloadIcon,\n  Schedule as ScheduleIcon,\n  CloudDownload as CloudDownloadIcon,\n  AutoAwesome as AutoAwesomeIcon,\n} from '@mui/icons-material'\nimport ThemeToggle from '@/components/ThemeToggle'\nimport PageSwitcher from '@/components/PageSwitcher'\nimport { groupSegmentsByInterval } from '@/lib/segment-group'\nimport { validateTranscriptUrl } from '@/lib/urls'\n\ntype TranscriptSegment = {\n  text: string\n  duration: number\n  offset: number\n}\n\ntype TranscriptData = {\n  transcript: string\n  segments: TranscriptSegment[]\n  videoId?: string\n  language?: string\n  sourceUrl?: string\n  provider?: string\n}\n\ntype ToastType = {\n  message: string\n  type: 'success' | 'error' | 'info'\n}\n\ntype SummaryData = {\n  title: string\n  overview: string\n  sections: {\n    heading: string\n    content: string\n    actions?: string[]\n    examples?: string[]\n  }[]\n  keyTakeaways: string[]\n  actionPlan: string[]\n}\n\nexport default function HomePage() {\n  const [url, setUrl] = useState('')\n  const [loading, setLoading] = useState(false)\n  const [error, setError] = useState<string | null>(null)\n  const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null)\n  const [showTimestamps, setShowTimestamps] = useState(false)\n  const [qualityMenuAnchor, setQualityMenuAnchor] = useState<null | HTMLElement>(null)\n  const [toast, setToast] = useState<ToastType | null>(null)\n  const [summary, setSummary] = useState<SummaryData | null>(null)\n  const [summaryLoading, setSummaryLoading] = useState(false)\n  const [summaryError, setSummaryError] = useState<string | null>(null)\n\n  const urlValidation = useMemo(() => (url ? validateTranscriptUrl(url) : { valid: false }), [url])\n  const isUrlValid = urlValidation.valid\n\n  // Show toast notification\n  const showToast = (message: string, type: ToastType['type'] = 'success') => {\n    setToast({ message, type })\n  }\n\n  const closeToast = () => {\n    setToast(null)\n  }\n\n  // Helper to format milliseconds to timestamp\n  const formatTimestamp = (ms: number): string => {\n    const totalSeconds = Math.floor(ms / 1000)\n    const hours = Math.floor(totalSeconds / 3600)\n    const minutes = Math.floor((totalSeconds % 3600) / 60)\n    const seconds = totalSeconds % 60\n\n    if (hours > 0) {\n      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`\n    }\n    return `${minutes}:${seconds.toString().padStart(2, '0')}`\n  }\n\n  // Generate current transcript format based on showTimestamps state\n  const currentTranscriptText = useMemo(() => {\n    if (!transcriptData) return ''\n\n    if (showTimestamps) {\n      const buckets = groupSegmentsByInterval(transcriptData.segments, 10_000)\n      return buckets.map((b) => `${formatTimestamp(b.startMs)} - ${b.text}`).join('\n\n')\n    } else {\n      return transcriptData.transcript\n    }\n  }, [transcriptData, showTimestamps])\n\n  async function handleSubmit(e: React.FormEvent) {\n    e.preventDefault()\n    setError(null)\n    setTranscriptData(null)\n    setShowTimestamps(false)\n    setSummary(null)\n    setSummaryError(null)\n    setLoading(true)\n\n    try {\n      const v = validateTranscriptUrl(url)\n      if (!v.valid) {\n        throw new Error(v.error || 'Please enter a valid video URL')\n      }\n      const res = await fetch('/api/transcript', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({ videoUrl: url }),\n      })\n      const body = await res.json()\n\n      if (!res.ok) {\n        throw new Error(`${body?.error || 'Unknown error'} ${body?.code ? `(${body.code})` : ''}`)\n      }\n\n      if (!body.data) {\n        throw new Error('No transcript data received')\n      }\n\n      setTranscriptData(body.data)\n      showToast('Transcript loaded successfully!')\n    } catch (err: any) {\n      console.error('Transcript fetch error:', err)\n      setError(err.message ?? String(err))\n    } finally {\n      setLoading(false)\n    }\n  }\n\n  const copyToClipboard = () => {\n    if (!currentTranscriptText) return\n    navigator.clipboard.writeText(currentTranscriptText)\n    showToast('Copied to clipboard!')\n  }\n\n  const downloadTranscript = () => {\n    if (!currentTranscriptText) return\n\n    const blob = new Blob([currentTranscriptText], { type: 'text/plain' })\n    const downloadUrl = URL.createObjectURL(blob)\n    const a = document.createElement('a')\n    a.href = downloadUrl\n    a.download = showTimestamps ? 'transcript-with-timestamps.txt' : 'transcript.txt'\n    document.body.appendChild(a)\n    a.click()\n    document.body.removeChild(a)\n    URL.revokeObjectURL(downloadUrl)\n    showToast('Transcript downloaded!')\n  }\n\n  const formatSummaryText = (data: SummaryData) => {\n    const lines: string[] = []\n    if (data.title) lines.push(data.title, '')\n    if (data.overview) lines.push(data.overview.trim(), '')\n    if (data.sections?.length) {\n      for (const section of data.sections) {\n        if (section.heading) lines.push(section.heading)\n        if (section.content) lines.push(section.content)\n        if (section.actions?.length) {\n          lines.push('Actions:')\n          section.actions.forEach((a) => lines.push(`- ${a}`))\n        }\n        if (section.examples?.length) {\n          lines.push('Examples:')\n          section.examples.forEach((e) => lines.push(`- ${e}`))\n        }\n        lines.push('')\n      }\n    }\n    if (data.keyTakeaways?.length) {\n      lines.push('Key Takeaways:')\n      data.keyTakeaways.forEach((k) => lines.push(`- ${k}`))\n      lines.push('')\n    }\n    if (data.actionPlan?.length) {\n      lines.push('Action Plan:')\n      data.actionPlan.forEach((a) => lines.push(`- ${a}`))\n    }\n    return lines.join('\n').trim()\n  }\n\n  const copySummaryToClipboard = () => {\n    if (!summary) return\n    const text = formatSummaryText(summary)\n    if (!text) return\n    navigator.clipboard.writeText(text)\n    showToast('Summary copied!')\n  }\n\n  const summarizeTranscript = async () => {\n    if (!transcriptData?.transcript) return\n    setSummaryLoading(true)\n    setSummaryError(null)\n\n    try {\n      const res = await fetch('/api/summary', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          transcript: transcriptData.transcript,\n          sourceUrl: transcriptData.sourceUrl,\n        }),\n      })\n      const body = await res.json()\n      if (!res.ok) {\n        throw new Error(body?.error || 'Failed to summarize transcript')\n      }\n      setSummary(body.data)\n      showToast('Summary ready!')\n    } catch (err: any) {\n      setSummaryError(err.message || 'Failed to summarize transcript')\n      showToast(err.message || 'Failed to summarize transcript', 'error')\n    } finally {\n      setSummaryLoading(false)\n    }\n  }\n\n  const downloadVideo = async (quality: string) => {\n    if (!transcriptData?.videoId || transcriptData.provider !== 'youtube') return\n\n    setQualityMenuAnchor(null)\n    setLoading(true)\n\n    try {\n      showToast('Fetching download link...', 'info')\n\n      const res = await fetch('/api/download', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          videoUrl: `https://www.youtube.com/watch?v=${transcriptData.videoId}`,\n          quality: quality,\n        }),\n      })\n\n      const body = await res.json()\n\n      if (!res.ok) {\n        throw new Error(body?.error || 'Failed to fetch download link')\n      }\n\n      if (body.data?.downloadUrl) {\n        // Open download link in new tab\n        const link = document.createElement('a')\n        link.href = body.data.downloadUrl\n        link.target = '_blank'\n        link.download = body.data.title || 'video'\n        document.body.appendChild(link)\n        link.click()\n        document.body.removeChild(link)\n\n        showToast('Your download has started!')\n      } else {\n        throw new Error('No download URL received')\n      }\n    } catch (err: any) {\n      console.error('Download error:', err)\n      showToast(err.message || 'Failed to download video', 'error')\n    } finally {\n      setLoading(false)\n    }\n  }\n\n  return (\n    <Box\n      sx={{\n        minHeight: '100vh',\n        background: (theme) =>\n          theme.palette.mode === 'dark'\n            ? 'linear-gradient(180deg, #2B313F 0%, #232836 50%, #1c2230 100%)'\n            : 'linear-gradient(180deg, #D2DEE3 0%, #c9d9df 40%, #b9d3da 100%)',\n      }}\n    >\n      {/* App Bar */}\n      <AppBar\n        position="static"\n        elevation={0}\n        color="inherit"\n        sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}\n      >\n        <Toolbar sx={{ position: 'relative', justifyContent: 'center', minHeight: 88 }}>\n          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>\n            <IconButton\n              aria-label="Home"\n              onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}\n              edge="start"\n              sx={{ p: 0 }}\n            >\n              <Image src="/logo.png" alt="Transcriptcreep logo" width={72} height={72} priority />\n            </IconButton>\n            <Typography\n              variant="h6"\n              component="div"\n              onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}\n              sx={{ fontWeight: 700, userSelect: 'none', cursor: 'pointer' }}\n            >\n              Transcriptcreep\n            </Typography>\n          </Box>\n          <Box\n            sx={{\n              position: 'absolute',\n              right: 16,\n              display: 'flex',\n              alignItems: 'center',\n              gap: { xs: 1.5, md: 2 },\n              ml: { xs: 0, sm: 4 },\n              maxWidth: { xs: '60%', md: 'unset' },\n            }}\n          >\n            <PageSwitcher />\n            <ThemeToggle />\n          </Box>\n        </Toolbar>\n      </AppBar>\n\n      {/* Main Content */}\n      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>\n        {/* Hero Section */}\n        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>\n          <Typography\n            variant="h3"\n            component="h1"\n            fontWeight={800}\n            color="text.primary"\n            gutterBottom\n          >\n            Lets creep that script\n          </Typography>\n          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 820, mx: 'auto' }}>\n            Generate clean transcripts from any YouTube video. Copy in one click, download as text,\n            or switch to timestamps.\n          </Typography>\n        </Box>\n\n        {/* URL Input Form */}\n        <Paper\n          elevation={3}\n          sx={{\n            p: { xs: 3, md: 4 },\n            mb: { xs: 4, md: 6 },\n            borderRadius: { xs: 3, md: 5 },\n            mx: 'auto',\n            maxWidth: 1100,\n            overflow: 'hidden',\n          }}\n        >\n          <form onSubmit={handleSubmit}>\n            <Stack\n              direction={{ xs: 'column', md: 'row' }}\n              spacing={{ xs: 2, md: 2.5 }}\n              alignItems={{ xs: 'stretch', md: 'center' }}\n            >\n              <TextField\n                fullWidth\n                value={url}\n                onChange={(e) => setUrl(e.target.value)}\n                placeholder="Enter YouTube / TikTok / Instagram URL..."\n                variant="outlined"\n                disabled={loading}\n                error={Boolean(url) && !isUrlValid}\n                helperText={Boolean(url) && !isUrlValid ? urlValidation.error : ' '}\n                sx={{ flexGrow: 1 }}\n              />\n              <Button\n                type="submit"\n                variant="contained"\n                size="large"\n                disabled={loading || (url.length > 0 && !isUrlValid)}\n                endIcon={<SendIcon />}\n                sx={{\n                  minWidth: { xs: '100%', md: 200 },\n                  width: { xs: '100%', md: 'auto' },\n                  alignSelf: { xs: 'stretch', md: 'center' },\n                  py: { xs: 1.5, md: 1.2 },\n                }}\n              >\n                {loading ? 'Loading...' : 'Get Transcript'}\n              </Button>\n            </Stack>\n          </form>\n        </Paper>\n\n        {/* Feature Badges */}\n        <Stack\n          direction={{ xs: 'column', sm: 'row' }}\n          spacing={2}\n          justifyContent="center"\n          alignItems="center"\n          sx={{ mb: { xs: 4, md: 6 } }}\n        >\n          <Stack direction="row" spacing={1} alignItems="center">\n            <CopyIcon color="primary" />\n            <Typography variant="body2" fontWeight={700}>\n              One-click Copy\n            </Typography>\n          </Stack>\n          <Stack direction="row" spacing={1} alignItems="center">\n            <ScheduleIcon color="primary" />\n            <Typography variant="body2" fontWeight={700}>\n              Timestamps View\n            </Typography>\n          </Stack>\n          <Stack direction="row" spacing={1} alignItems="center">\n            <CloudDownloadIcon color="primary" />\n            <Typography variant="body2" fontWeight={700}>\n              Export as Text\n            </Typography>\n          </Stack>\n        </Stack>\n\n        {/* How it works */}\n        <Box sx={{ maxWidth: 1000, mx: 'auto', mb: { xs: 6, md: 8 } }}>\n          <Typography\n            variant="h5"\n            align="center"\n            fontWeight={700}\n            sx={{ mb: 2 }}\n            color="text.primary"\n          >\n            How it works\n          </Typography>\n          <Grid container spacing={2}>\n            <Grid item xs={12} md={4}>\n              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>\n                <Typography fontWeight={700}>1. Paste a YouTube URL</Typography>\n                <Typography variant="body2" color="text.secondary">\n                  We validate the link client‑side to save you time.\n                </Typography>\n              </Paper>\n            </Grid>\n            <Grid item xs={12} md={4}>\n              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>\n                <Typography fontWeight={700}>2. Fetch & Clean</Typography>\n                <Typography variant="body2" color="text.secondary">\n                  We fetch, decode entities, and normalize timestamps.\n                </Typography>\n              </Paper>\n            </Grid>\n            <Grid item xs={12} md={4}>\n              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>\n                <Typography fontWeight={700}>3. Copy or Download</Typography>\n                <Typography variant="body2" color="text.secondary">\n                  Copy in one click or export to a tidy text file.\n                </Typography>\n              </Paper>\n            </Grid>\n          </Grid>\n        </Box>\n\n        {/* Error Alert */}\n        {error && (\n          <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 4 }}>\n            {error}\n          </Alert>\n        )}\n\n        {/* Results Section */}\n        {transcriptData && (\n          <Grid container spacing={3}>\n            {/* Video / Source Details - Left Side */}\n            <Grid item xs={12} lg={6}>\n              <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>\n                {transcriptData.provider === 'youtube' && transcriptData.videoId ? (\n                  <Box\n                    sx={{\n                      position: 'relative',\n                      paddingTop: '56.25%', // 16:9 aspect ratio\n                      bgcolor: 'black',\n                    }}\n                  >\n                    <iframe\n                      src={`https://www.youtube.com/embed/${transcriptData.videoId}`}\n                      title="YouTube video player"\n                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"\n                      allowFullScreen\n                      style={{\n                        position: 'absolute',\n                        top: 0,\n                        left: 0,\n                        width: '100%',\n                        height: '100%',\n                        border: 0,\n                      }}\n                    />\n                  </Box>\n                ) : (\n                  <Box\n                    sx={{\n                      p: 3,\n                      bgcolor: 'background.paper',\n                      borderBottom: '1px solid',\n                      borderColor: 'divider',\n                    }}\n                  >\n                    <Typography variant="h6" gutterBottom fontWeight={600}>\n                      Transcript Source\n                    </Typography>\n                    <Typography\n                      variant="body2"\n                      color="text.secondary"\n                      sx={{ wordBreak: 'break-word' }}\n                    >\n                      {transcriptData.sourceUrl || 'External video'}\n                    </Typography>\n                  </Box>\n                )}\n\n                <CardContent sx={{ flexGrow: 1 }}>\n                  <Typography variant="h6" gutterBottom fontWeight={600}>\n                    Details\n                  </Typography>\n                  <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>\n                    {transcriptData.videoId && (\n                      <Chip label={`Video ID: ${transcriptData.videoId}`} size="small" />\n                    )}\n                    {transcriptData.provider && (\n                      <Chip label={`Source: ${transcriptData.provider}`} size="small" />\n                    )}\n                    {transcriptData.language && (\n                      <Chip\n                        label={`Language: ${transcriptData.language}`}\n                        size="small"\n                        color="primary"\n                      />\n                    )}\n                    <Chip\n                      icon={<ScheduleIcon />}\n                      label={`${transcriptData.segments.length} segments`}\n                      size="small"\n                      color="secondary"\n                    />\n                  </Stack>\n                </CardContent>\n\n                <Divider />\n\n                <CardActions sx={{ p: 2 }}>\n                  <Button\n                    fullWidth\n                    variant="contained"\n                    color="secondary"\n                    startIcon={<CloudDownloadIcon />}\n                    onClick={(e) => setQualityMenuAnchor(e.currentTarget)}\n                    disabled={\n                      loading || transcriptData.provider !== 'youtube' || !transcriptData.videoId\n                    }\n                  >\n                    Download Video\n                  </Button>\n                  <Menu\n                    anchorEl={qualityMenuAnchor}\n                    open={Boolean(qualityMenuAnchor)}\n                    onClose={() => setQualityMenuAnchor(null)}\n                  >\n                    <MenuItem onClick={() => downloadVideo('360')}>\n                      <Typography variant="body2">360p - Standard Quality</Typography>\n                    </MenuItem>\n                    <MenuItem onClick={() => downloadVideo('720')}>\n                      <Typography variant="body2">720p - HD Quality</Typography>\n                    </MenuItem>\n                    <MenuItem onClick={() => downloadVideo('1080')}>\n                      <Typography variant="body2">1080p - Full HD</Typography>\n                    </MenuItem>\n                  </Menu>\n                </CardActions>\n              </Card>\n            </Grid>\n\n            {/* Transcript - Right Side */}\n            <Grid item xs={12} lg={6}>\n              <Stack spacing={3}>\n                <Card\n                  elevation={3}\n                  sx={{\n                    height: { xs: 'auto', lg: '100%' },\n                    display: 'flex',\n                    flexDirection: 'column',\n                    maxHeight: { xs: '600px', lg: '100%' },\n                  }}\n                >\n                  <CardContent sx={{ pb: 1 }}>\n                    <Stack\n                      direction="row"\n                      justifyContent="space-between"\n                      alignItems="center"\n                      flexWrap="wrap"\n                      gap={1}\n                    >\n                      <Typography variant="h6" fontWeight={600}>\n                        Transcript\n                      </Typography>\n                      <Stack direction="row" spacing={1} flexWrap="wrap">\n                        <IconButton\n                          onClick={copyToClipboard}\n                          size="small"\n                          color="primary"\n                          title="Copy to clipboard"\n                        >\n                          <CopyIcon />\n                        </IconButton>\n                        <IconButton\n                          onClick={downloadTranscript}\n                          size="small"\n                          color="primary"\n                          title="Download as text"\n                        >\n                          <DownloadIcon />\n                        </IconButton>\n                        <Button\n                          variant={showTimestamps ? 'contained' : 'outlined'}\n                          size="small"\n                          onClick={() => setShowTimestamps(!showTimestamps)}\n                          startIcon={<ScheduleIcon />}\n                        >\n                          Timestamps\n                        </Button>\n                        <Button\n                          variant="contained"\n                          size="small"\n                          onClick={summarizeTranscript}\n                          startIcon={<AutoAwesomeIcon />}\n                          disabled={summaryLoading}\n                        >\n                          {summaryLoading ? 'Summarizing...' : 'Summarize'}\n                        </Button>\n                      </Stack>\n                    </Stack>\n                  </CardContent>\n\n                  <Divider />\n\n                  <CardContent\n                    sx={{\n                      flexGrow: 1,\n                      overflow: 'auto',\n                      maxHeight: { xs: '400px', lg: 'calc(100vh - 400px)' },\n                      pb: 1,\n                    }}\n                  >\n                    {showTimestamps ? (\n                      // Display grouped by 10-second buckets\n                      <Stack spacing={2}>\n                        {groupSegmentsByInterval(transcriptData.segments, 10_000).map(\n                          (bucket, index) => (\n                            <Box key={index}>\n                              <Typography\n                                variant="caption"\n                                color="primary"\n                                fontWeight={600}\n                                display="block"\n                                gutterBottom\n                              >\n                                {formatTimestamp(bucket.startMs)}\n                              </Typography>\n                              <Typography variant="body2" color="text.primary">\n                                {bucket.text}\n                              </Typography>\n                            </Box>\n                          )\n                        )}\n                      </Stack>\n                    ) : (\n                      // Display as continuous long text\n                      <Typography\n                        variant="body2"\n                        color="text.primary"\n                        sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}\n                      >\n                        {transcriptData.transcript}\n                      </Typography>\n                    )}\n                  </CardContent>\n                </Card>\n\n                {(summaryLoading || summary || summaryError) && (\n                  <Card elevation={3}>\n                    <CardContent>\n                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>\n                        <Typography variant="h6" fontWeight={600}>\n                          Summary\n                        </Typography>\n                        {summaryLoading && <CircularProgress size={18} />}\n                        {summary && (\n                          <IconButton\n                            onClick={copySummaryToClipboard}\n                            size="small"\n                            color="primary"\n                            title="Copy summary"\n                          >\n                            <CopyIcon />\n                          </IconButton>\n                        )}\n                      </Stack>\n\n                      {summaryError && (\n                        <Alert severity="error" sx={{ mb: 2 }}>\n                          {summaryError}\n                        </Alert>\n                      )}\n\n                      {!summaryLoading && summary && (\n                        <Stack spacing={2}>\n                          {summary.title && (\n                            <Typography variant="h5" fontWeight={700}>\n                              {summary.title}\n                            </Typography>\n                          )}\n                          {summary.overview && (\n                            <Typography\n                              variant="body2"\n                              color="text.primary"\n                              sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}\n                            >\n                              {summary.overview}\n                            </Typography>\n                          )}\n                          <Box>\n                            <Typography variant="subtitle1" fontWeight={700}>\n                              Sections\n                            </Typography>\n                            <Stack spacing={0.5}>\n                              {summary.sections.length ? (\n                                summary.sections.map((section, idx) => (\n                                  <Box key={idx} sx={{ mb: 1.5 }}>\n                                    {section.heading && (\n                                      <Typography variant="subtitle2" fontWeight={700}>\n                                        {section.heading}\n                                      </Typography>\n                                    )}\n                                    {section.content && (\n                                      <Typography variant="body2" sx={{ mb: 0.5 }}>\n                                        {section.content}\n                                      </Typography>\n                                    )}\n                                    {section.actions?.length ? (\n                                      <Stack spacing={0.25} sx={{ mb: 0.5 }}>\n                                        <Typography variant="caption" fontWeight={700}>\n                                          Actions\n                                        </Typography>\n                                        {section.actions.map((item, aIdx) => (\n                                          <Typography key={aIdx} variant="body2">\n                                            - {item}\n                                          </Typography>\n                                        ))}\n                                      </Stack>\n                                    ) : null}\n                                    {section.examples?.length ? (\n                                      <Stack spacing={0.25}>\n                                        <Typography variant="caption" fontWeight={700}>\n                                          Examples\n                                        </Typography>\n                                        {section.examples.map((item, eIdx) => (\n                                          <Typography key={eIdx} variant="body2">\n                                            - {item}\n                                          </Typography>\n                                        ))}\n                                      </Stack>\n                                    ) : null}\n                                  </Box>\n                                ))\n                              ) : (\n                                <Typography variant="body2" color="text.secondary">\n                                  No sections found.\n                                </Typography>\n                              )}\n                            </Stack>\n                          </Box>\n\n                          <Box>\n                            <Typography variant="subtitle1" fontWeight={700}>\n                              Key Takeaways\n                            </Typography>\n                            <Stack spacing={0.5}>\n                              {summary.keyTakeaways.length ? (\n                                summary.keyTakeaways.map((item, idx) => (\n                                  <Typography key={idx} variant="body2">\n                                    - {item}\n                                  </Typography>\n                                ))\n                              ) : (\n                                <Typography variant="body2" color="text.secondary">\n                                  No key takeaways found.\n                                </Typography>\n                              )}\n                            </Stack>\n                          </Box>\n\n                          <Box>\n                            <Typography variant="subtitle1" fontWeight={700}>\n                              Action Plan\n                            </Typography>\n                            <Stack spacing={0.5}>\n                              {summary.actionPlan.length ? (\n                                summary.actionPlan.map((item, idx) => (\n                                  <Typography key={idx} variant="body2">\n                                    - {item}\n                                  </Typography>\n                                ))\n                              ) : (\n                                <Typography variant="body2" color="text.secondary">\n                                  No action plan found.\n                                </Typography>\n                              )}\n                            </Stack>\n                          </Box>\n                        </Stack>\n                      )}\n                    </CardContent>\n                  </Card>\n                )}\n              </Stack>\n            </Grid>\n          </Grid>\n        )}\n      </Container>\n\n      {/* Toast Notification */}\n      <Snackbar\n        open={Boolean(toast)}\n        autoHideDuration={3000}\n        onClose={closeToast}\n        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}\n      >\n        <Alert onClose={closeToast} severity={toast?.type} variant="filled" sx={{ width: '100%' }}>\n          {toast?.message}\n        </Alert>\n      </Snackbar>\n    </Box>\n  )\n}\n
+'use client'
+
+import React, { useState, useMemo } from 'react'
+import Image from 'next/image'
+import {
+  Container,
+  Box,
+  Typography,
+  TextField,
+  Button,
+  Card,
+  CardContent,
+  CardActions,
+  Grid,
+  IconButton,
+  Menu,
+  MenuItem,
+  Alert,
+  Snackbar,
+  Chip,
+  Divider,
+  Stack,
+  AppBar,
+  Toolbar,
+  Paper,
+  CircularProgress,
+} from '@mui/material'
+import {
+  Send as SendIcon,
+  ContentCopy as CopyIcon,
+  Download as DownloadIcon,
+  Schedule as ScheduleIcon,
+  CloudDownload as CloudDownloadIcon,
+  AutoAwesome as AutoAwesomeIcon,
+} from '@mui/icons-material'
+import ThemeToggle from '@/components/ThemeToggle'
+import PageSwitcher from '@/components/PageSwitcher'
+import { groupSegmentsByInterval } from '@/lib/segment-group'
+import { validateTranscriptUrl } from '@/lib/urls'
+
+type TranscriptSegment = {
+  text: string
+  duration: number
+  offset: number
+}
+
+type TranscriptData = {
+  transcript: string
+  segments: TranscriptSegment[]
+  videoId?: string
+  language?: string
+  sourceUrl?: string
+  provider?: string
+}
+
+type ToastType = {
+  message: string
+  type: 'success' | 'error' | 'info'
+}
+
+type SummaryData = {
+  title: string
+  overview: string
+  sections: {
+    heading: string
+    content: string
+    actions?: string[]
+    examples?: string[]
+  }[]
+  keyTakeaways: string[]
+  actionPlan: string[]
+}
+
+export default function HomePage() {
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [transcriptData, setTranscriptData] = useState<TranscriptData | null>(null)
+  const [showTimestamps, setShowTimestamps] = useState(false)
+  const [qualityMenuAnchor, setQualityMenuAnchor] = useState<null | HTMLElement>(null)
+  const [toast, setToast] = useState<ToastType | null>(null)
+  const [summary, setSummary] = useState<SummaryData | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+
+  const urlValidation = useMemo(() => (url ? validateTranscriptUrl(url) : { valid: false }), [url])
+  const isUrlValid = urlValidation.valid
+
+  // Show toast notification
+  const showToast = (message: string, type: ToastType['type'] = 'success') => {
+    setToast({ message, type })
+  }
+
+  const closeToast = () => {
+    setToast(null)
+  }
+
+  // Helper to format milliseconds to timestamp
+  const formatTimestamp = (ms: number): string => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+    }
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
+
+  // Generate current transcript format based on showTimestamps state
+  const currentTranscriptText = useMemo(() => {
+    if (!transcriptData) return ''
+
+    if (showTimestamps) {
+      const buckets = groupSegmentsByInterval(transcriptData.segments, 10_000)
+      return buckets.map((b) => `${formatTimestamp(b.startMs)} - ${b.text}`).join('\n\n')
+    } else {
+      return transcriptData.transcript
+    }
+  }, [transcriptData, showTimestamps])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setTranscriptData(null)
+    setShowTimestamps(false)
+    setSummary(null)
+    setSummaryError(null)
+    setLoading(true)
+
+    try {
+      const v = validateTranscriptUrl(url)
+      if (!v.valid) {
+        throw new Error(v.error || 'Please enter a valid video URL')
+      }
+      const res = await fetch('/api/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl: url }),
+      })
+      const body = await res.json()
+
+      if (!res.ok) {
+        throw new Error(`${body?.error || 'Unknown error'} ${body?.code ? `(${body.code})` : ''}`)
+      }
+
+      if (!body.data) {
+        throw new Error('No transcript data received')
+      }
+
+      setTranscriptData(body.data)
+      showToast('Transcript loaded successfully!')
+    } catch (err: any) {
+      console.error('Transcript fetch error:', err)
+      setError(err.message ?? String(err))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const copyToClipboard = () => {
+    if (!currentTranscriptText) return
+    navigator.clipboard.writeText(currentTranscriptText)
+    showToast('Copied to clipboard!')
+  }
+
+  const downloadTranscript = () => {
+    if (!currentTranscriptText) return
+
+    const blob = new Blob([currentTranscriptText], { type: 'text/plain' })
+    const downloadUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = showTimestamps ? 'transcript-with-timestamps.txt' : 'transcript.txt'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(downloadUrl)
+    showToast('Transcript downloaded!')
+  }
+
+  const formatSummaryText = (data: SummaryData) => {
+    const lines: string[] = []
+    if (data.title) lines.push(data.title, '')
+    if (data.overview) lines.push(data.overview.trim(), '')
+    if (data.sections?.length) {
+      for (const section of data.sections) {
+        if (section.heading) lines.push(section.heading)
+        if (section.content) lines.push(section.content)
+        if (section.actions?.length) {
+          lines.push('Actions:')
+          section.actions.forEach((a) => lines.push(`- ${a}`))
+        }
+        if (section.examples?.length) {
+          lines.push('Examples:')
+          section.examples.forEach((e) => lines.push(`- ${e}`))
+        }
+        lines.push('')
+      }
+    }
+    if (data.keyTakeaways?.length) {
+      lines.push('Key Takeaways:')
+      data.keyTakeaways.forEach((k) => lines.push(`- ${k}`))
+      lines.push('')
+    }
+    if (data.actionPlan?.length) {
+      lines.push('Action Plan:')
+      data.actionPlan.forEach((a) => lines.push(`- ${a}`))
+    }
+    return lines.join('\n').trim()
+  }
+
+  const copySummaryToClipboard = () => {
+    if (!summary) return
+    const text = formatSummaryText(summary)
+    if (!text) return
+    navigator.clipboard.writeText(text)
+    showToast('Summary copied!')
+  }
+
+  const summarizeTranscript = async () => {
+    if (!transcriptData?.transcript) return
+    setSummaryLoading(true)
+    setSummaryError(null)
+
+    try {
+      const res = await fetch('/api/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: transcriptData.transcript,
+          sourceUrl: transcriptData.sourceUrl,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        throw new Error(body?.error || 'Failed to summarize transcript')
+      }
+      setSummary(body.data)
+      showToast('Summary ready!')
+    } catch (err: any) {
+      setSummaryError(err.message || 'Failed to summarize transcript')
+      showToast(err.message || 'Failed to summarize transcript', 'error')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
+  const downloadVideo = async (quality: string) => {
+    if (!transcriptData?.videoId || transcriptData.provider !== 'youtube') return
+
+    setQualityMenuAnchor(null)
+    setLoading(true)
+
+    try {
+      showToast('Fetching download link...', 'info')
+
+      const res = await fetch('/api/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl: `https://www.youtube.com/watch?v=${transcriptData.videoId}`,
+          quality: quality,
+        }),
+      })
+
+      const body = await res.json()
+
+      if (!res.ok) {
+        throw new Error(body?.error || 'Failed to fetch download link')
+      }
+
+      if (body.data?.downloadUrl) {
+        // Open download link in new tab
+        const link = document.createElement('a')
+        link.href = body.data.downloadUrl
+        link.target = '_blank'
+        link.download = body.data.title || 'video'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        showToast('Your download has started!')
+      } else {
+        throw new Error('No download URL received')
+      }
+    } catch (err: any) {
+      console.error('Download error:', err)
+      showToast(err.message || 'Failed to download video', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        background: (theme) =>
+          theme.palette.mode === 'dark'
+            ? 'linear-gradient(180deg, #2B313F 0%, #232836 50%, #1c2230 100%)'
+            : 'linear-gradient(180deg, #D2DEE3 0%, #c9d9df 40%, #b9d3da 100%)',
+      }}
+    >
+      {/* App Bar */}
+      <AppBar
+        position="static"
+        elevation={0}
+        color="inherit"
+        sx={{ bgcolor: 'primary.main', color: 'primary.contrastText' }}
+      >
+        <Toolbar sx={{ position: 'relative', justifyContent: 'center', minHeight: 88 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <IconButton
+              aria-label="Home"
+              onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}
+              edge="start"
+              sx={{ p: 0 }}
+            >
+              <Image src="/logo.png" alt="Transcriptcreep logo" width={72} height={72} priority />
+            </IconButton>
+            <Typography
+              variant="h6"
+              component="div"
+              onClick={() => (typeof window !== 'undefined' ? window.location.reload() : null)}
+              sx={{ fontWeight: 700, userSelect: 'none', cursor: 'pointer' }}
+            >
+              Transcriptcreep
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              position: 'absolute',
+              right: 16,
+              display: 'flex',
+              alignItems: 'center',
+              gap: { xs: 1.5, md: 2 },
+              ml: { xs: 0, sm: 4 },
+              maxWidth: { xs: '60%', md: 'unset' },
+            }}
+          >
+            <PageSwitcher />
+            <ThemeToggle />
+          </Box>
+        </Toolbar>
+      </AppBar>
+
+      {/* Main Content */}
+      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+        {/* Hero Section */}
+        <Box sx={{ textAlign: 'center', mb: { xs: 4, md: 6 } }}>
+          <Typography
+            variant="h3"
+            component="h1"
+            fontWeight={800}
+            color="text.primary"
+            gutterBottom
+          >
+            Lets creep that script
+          </Typography>
+          <Typography variant="h6" color="text.secondary" sx={{ maxWidth: 820, mx: 'auto' }}>
+            Generate clean transcripts from any YouTube video. Copy in one click, download as text,
+            or switch to timestamps.
+          </Typography>
+        </Box>
+
+        {/* URL Input Form */}
+        <Paper
+          elevation={3}
+          sx={{
+            p: { xs: 3, md: 4 },
+            mb: { xs: 4, md: 6 },
+            borderRadius: { xs: 3, md: 5 },
+            mx: 'auto',
+            maxWidth: 1100,
+            overflow: 'hidden',
+          }}
+        >
+          <form onSubmit={handleSubmit}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              spacing={{ xs: 2, md: 2.5 }}
+              alignItems={{ xs: 'stretch', md: 'center' }}
+            >
+              <TextField
+                fullWidth
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Enter YouTube / TikTok / Instagram URL..."
+                variant="outlined"
+                disabled={loading}
+                error={Boolean(url) && !isUrlValid}
+                helperText={Boolean(url) && !isUrlValid ? urlValidation.error : ' '}
+                sx={{ flexGrow: 1 }}
+              />
+              <Button
+                type="submit"
+                variant="contained"
+                size="large"
+                disabled={loading || (url.length > 0 && !isUrlValid)}
+                endIcon={<SendIcon />}
+                sx={{
+                  minWidth: { xs: '100%', md: 200 },
+                  width: { xs: '100%', md: 'auto' },
+                  alignSelf: { xs: 'stretch', md: 'center' },
+                  py: { xs: 1.5, md: 1.2 },
+                }}
+              >
+                {loading ? 'Loading...' : 'Get Transcript'}
+              </Button>
+            </Stack>
+          </form>
+        </Paper>
+
+        {/* Feature Badges */}
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          justifyContent="center"
+          alignItems="center"
+          sx={{ mb: { xs: 4, md: 6 } }}
+        >
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CopyIcon color="primary" />
+            <Typography variant="body2" fontWeight={700}>
+              One-click Copy
+            </Typography>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <ScheduleIcon color="primary" />
+            <Typography variant="body2" fontWeight={700}>
+              Timestamps View
+            </Typography>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <CloudDownloadIcon color="primary" />
+            <Typography variant="body2" fontWeight={700}>
+              Export as Text
+            </Typography>
+          </Stack>
+        </Stack>
+
+        {/* How it works */}
+        <Box sx={{ maxWidth: 1000, mx: 'auto', mb: { xs: 6, md: 8 } }}>
+          <Typography
+            variant="h5"
+            align="center"
+            fontWeight={700}
+            sx={{ mb: 2 }}
+            color="text.primary"
+          >
+            How it works
+          </Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
+                <Typography fontWeight={700}>1. Paste a YouTube URL</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We validate the link client‑side to save you time.
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
+                <Typography fontWeight={700}>2. Fetch & Clean</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  We fetch, decode entities, and normalize timestamps.
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Paper variant="outlined" sx={{ p: 2, height: '100%', textAlign: 'center' }}>
+                <Typography fontWeight={700}>3. Copy or Download</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Copy in one click or export to a tidy text file.
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+        </Box>
+
+        {/* Error Alert */}
+        {error && (
+          <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 4 }}>
+            {error}
+          </Alert>
+        )}
+
+        {/* Results Section */}
+        {transcriptData && (
+          <Grid container spacing={3}>
+            {/* Video / Source Details - Left Side */}
+            <Grid item xs={12} lg={6}>
+              <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                {transcriptData.provider === 'youtube' && transcriptData.videoId ? (
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      paddingTop: '56.25%', // 16:9 aspect ratio
+                      bgcolor: 'black',
+                    }}
+                  >
+                    <iframe
+                      src={`https://www.youtube.com/embed/${transcriptData.videoId}`}
+                      title="YouTube video player"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        border: 0,
+                      }}
+                    />
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      p: 3,
+                      bgcolor: 'background.paper',
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom fontWeight={600}>
+                      Transcript Source
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ wordBreak: 'break-word' }}
+                    >
+                      {transcriptData.sourceUrl || 'External video'}
+                    </Typography>
+                  </Box>
+                )}
+
+                <CardContent sx={{ flexGrow: 1 }}>
+                  <Typography variant="h6" gutterBottom fontWeight={600}>
+                    Details
+                  </Typography>
+                  <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
+                    {transcriptData.videoId && (
+                      <Chip label={`Video ID: ${transcriptData.videoId}`} size="small" />
+                    )}
+                    {transcriptData.provider && (
+                      <Chip label={`Source: ${transcriptData.provider}`} size="small" />
+                    )}
+                    {transcriptData.language && (
+                      <Chip
+                        label={`Language: ${transcriptData.language}`}
+                        size="small"
+                        color="primary"
+                      />
+                    )}
+                    <Chip
+                      icon={<ScheduleIcon />}
+                      label={`${transcriptData.segments.length} segments`}
+                      size="small"
+                      color="secondary"
+                    />
+                  </Stack>
+                </CardContent>
+
+                <Divider />
+
+                <CardActions sx={{ p: 2 }}>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="secondary"
+                    startIcon={<CloudDownloadIcon />}
+                    onClick={(e) => setQualityMenuAnchor(e.currentTarget)}
+                    disabled={
+                      loading || transcriptData.provider !== 'youtube' || !transcriptData.videoId
+                    }
+                  >
+                    Download Video
+                  </Button>
+                  <Menu
+                    anchorEl={qualityMenuAnchor}
+                    open={Boolean(qualityMenuAnchor)}
+                    onClose={() => setQualityMenuAnchor(null)}
+                  >
+                    <MenuItem onClick={() => downloadVideo('360')}>
+                      <Typography variant="body2">360p - Standard Quality</Typography>
+                    </MenuItem>
+                    <MenuItem onClick={() => downloadVideo('720')}>
+                      <Typography variant="body2">720p - HD Quality</Typography>
+                    </MenuItem>
+                    <MenuItem onClick={() => downloadVideo('1080')}>
+                      <Typography variant="body2">1080p - Full HD</Typography>
+                    </MenuItem>
+                  </Menu>
+                </CardActions>
+              </Card>
+            </Grid>
+
+            {/* Transcript - Right Side */}
+            <Grid item xs={12} lg={6}>
+              <Stack spacing={3}>
+                <Card
+                  elevation={3}
+                  sx={{
+                    height: { xs: 'auto', lg: '100%' },
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxHeight: { xs: '600px', lg: '100%' },
+                  }}
+                >
+                  <CardContent sx={{ pb: 1 }}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      flexWrap="wrap"
+                      gap={1}
+                    >
+                      <Typography variant="h6" fontWeight={600}>
+                        Transcript
+                      </Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                        <IconButton
+                          onClick={copyToClipboard}
+                          size="small"
+                          color="primary"
+                          title="Copy to clipboard"
+                        >
+                          <CopyIcon />
+                        </IconButton>
+                        <IconButton
+                          onClick={downloadTranscript}
+                          size="small"
+                          color="primary"
+                          title="Download as text"
+                        >
+                          <DownloadIcon />
+                        </IconButton>
+                        <Button
+                          variant={showTimestamps ? 'contained' : 'outlined'}
+                          size="small"
+                          onClick={() => setShowTimestamps(!showTimestamps)}
+                          startIcon={<ScheduleIcon />}
+                        >
+                          Timestamps
+                        </Button>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={summarizeTranscript}
+                          startIcon={<AutoAwesomeIcon />}
+                          disabled={summaryLoading}
+                        >
+                          {summaryLoading ? 'Summarizing...' : 'Summarize'}
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+
+                  <Divider />
+
+                  <CardContent
+                    sx={{
+                      flexGrow: 1,
+                      overflow: 'auto',
+                      maxHeight: { xs: '400px', lg: 'calc(100vh - 400px)' },
+                      pb: 1,
+                    }}
+                  >
+                    {showTimestamps ? (
+                      // Display grouped by 10-second buckets
+                      <Stack spacing={2}>
+                        {groupSegmentsByInterval(transcriptData.segments, 10_000).map(
+                          (bucket, index) => (
+                            <Box key={index}>
+                              <Typography
+                                variant="caption"
+                                color="primary"
+                                fontWeight={600}
+                                display="block"
+                                gutterBottom
+                              >
+                                {formatTimestamp(bucket.startMs)}
+                              </Typography>
+                              <Typography variant="body2" color="text.primary">
+                                {bucket.text}
+                              </Typography>
+                            </Box>
+                          )
+                        )}
+                      </Stack>
+                    ) : (
+                      // Display as continuous long text
+                      <Typography
+                        variant="body2"
+                        color="text.primary"
+                        sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}
+                      >
+                        {transcriptData.transcript}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {(summaryLoading || summary || summaryError) && (
+                  <Card elevation={3}>
+                    <CardContent>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                        <Typography variant="h6" fontWeight={600}>
+                          Summary
+                        </Typography>
+                        {summaryLoading && <CircularProgress size={18} />}
+                        {summary && (
+                          <IconButton
+                            onClick={copySummaryToClipboard}
+                            size="small"
+                            color="primary"
+                            title="Copy summary"
+                          >
+                            <CopyIcon />
+                          </IconButton>
+                        )}
+                      </Stack>
+
+                      {summaryError && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          {summaryError}
+                        </Alert>
+                      )}
+
+                      {!summaryLoading && summary && (
+                        <Stack spacing={2}>
+                          {summary.title && (
+                            <Typography variant="h5" fontWeight={700}>
+                              {summary.title}
+                            </Typography>
+                          )}
+                          {summary.overview && (
+                            <Typography
+                              variant="body2"
+                              color="text.primary"
+                              sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}
+                            >
+                              {summary.overview}
+                            </Typography>
+                          )}
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                              Sections
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {summary.sections.length ? (
+                                summary.sections.map((section, idx) => (
+                                  <Box key={idx} sx={{ mb: 1.5 }}>
+                                    {section.heading && (
+                                      <Typography variant="subtitle2" fontWeight={700}>
+                                        {section.heading}
+                                      </Typography>
+                                    )}
+                                    {section.content && (
+                                      <Typography variant="body2" sx={{ mb: 0.5 }}>
+                                        {section.content}
+                                      </Typography>
+                                    )}
+                                    {section.actions?.length ? (
+                                      <Stack spacing={0.25} sx={{ mb: 0.5 }}>
+                                        <Typography variant="caption" fontWeight={700}>
+                                          Actions
+                                        </Typography>
+                                        {section.actions.map((item, aIdx) => (
+                                          <Typography key={aIdx} variant="body2">
+                                            - {item}
+                                          </Typography>
+                                        ))}
+                                      </Stack>
+                                    ) : null}
+                                    {section.examples?.length ? (
+                                      <Stack spacing={0.25}>
+                                        <Typography variant="caption" fontWeight={700}>
+                                          Examples
+                                        </Typography>
+                                        {section.examples.map((item, eIdx) => (
+                                          <Typography key={eIdx} variant="body2">
+                                            - {item}
+                                          </Typography>
+                                        ))}
+                                      </Stack>
+                                    ) : null}
+                                  </Box>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No sections found.
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                              Key Takeaways
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {summary.keyTakeaways.length ? (
+                                summary.keyTakeaways.map((item, idx) => (
+                                  <Typography key={idx} variant="body2">
+                                    - {item}
+                                  </Typography>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No key takeaways found.
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                              Action Plan
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {summary.actionPlan.length ? (
+                                summary.actionPlan.map((item, idx) => (
+                                  <Typography key={idx} variant="body2">
+                                    - {item}
+                                  </Typography>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No action plan found.
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+                        </Stack>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </Stack>
+            </Grid>
+          </Grid>
+        )}
+      </Container>
+
+      {/* Toast Notification */}
+      <Snackbar
+        open={Boolean(toast)}
+        autoHideDuration={3000}
+        onClose={closeToast}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={closeToast} severity={toast?.type} variant="filled" sx={{ width: '100%' }}>
+          {toast?.message}
+        </Alert>
+      </Snackbar>
+    </Box>
+  )
+}

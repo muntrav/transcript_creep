@@ -1,1 +1,72 @@
-import { validateYouTubeUrl } from './youtube'\n\nexport type UrlValidation = { valid: boolean; error?: string }\nexport type TranscriptSource = 'youtube' | 'instagram' | 'tiktok' | 'unknown'\n\nexport function isHttpUrl(value: string): boolean {\n  try {\n    const u = new URL(value)\n    return u.protocol === 'http:' || u.protocol === 'https:'\n  } catch {\n    return false\n  }\n}\n\nexport function validateShortsUrl(url: string): UrlValidation {\n  if (!url || !isHttpUrl(url)) return { valid: false, error: 'Enter a valid URL' }\n  const host = new URL(url).hostname.toLowerCase()\n\n  const isYouTube = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)\n  const isInstagram = /(^|\.)instagram\.com$/.test(host)\n  const isTikTok = /(^|\.)tiktok\.com$/.test(host) || /(^|\.)vt\.tiktok\.com$/.test(host)\n\n  if (!(isYouTube || isInstagram || isTikTok)) {\n    return { valid: false, error: 'Supported: YouTube, Instagram, TikTok' }\n  }\n\n  // Light path checks\n  if (isYouTube) {\n    // Accept shorts, watch, youtu.be, embed, etc.\n    return { valid: true }\n  }\n  if (isInstagram) {\n    // Expect /reel/, /reels/, or /p/\n    if (/\/reel\//i.test(url) || /\/reels\//i.test(url) || /\/p\//i.test(url))\n      return { valid: true }\n    return { valid: false, error: 'Use a Reel/Post URL' }\n  }\n  if (isTikTok) {\n    // Expect /video/ or a vt.tiktok short link\n    if (/\/video\//i.test(url) || /vt\.tiktok\.com\//i.test(url)) return { valid: true }\n    return { valid: false, error: 'Use a TikTok video URL' }\n  }\n\n  return { valid: false, error: 'Unsupported URL' }\n}\n\nexport function getTranscriptSource(url: string): TranscriptSource {\n  if (!isHttpUrl(url)) return 'unknown'\n  const host = new URL(url).hostname.toLowerCase()\n\n  const isYouTube = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)\n  const isInstagram = /(^|\.)instagram\.com$/.test(host)\n  const isTikTok = /(^|\.)tiktok\.com$/.test(host) || /(^|\.)vt\.tiktok\.com$/.test(host)\n\n  if (isYouTube) return 'youtube'\n  if (isInstagram) return 'instagram'\n  if (isTikTok) return 'tiktok'\n  return 'unknown'\n}\n\nexport function validateTranscriptUrl(url: string): UrlValidation & { source?: TranscriptSource } {\n  const source = getTranscriptSource(url)\n  if (source === 'youtube') {\n    const v = validateYouTubeUrl(url)\n    return { ...v, source }\n  }\n  if (source === 'instagram' || source === 'tiktok') {\n    const v = validateShortsUrl(url)\n    return { ...v, source }\n  }\n  return { valid: false, error: 'Supported: YouTube, Instagram, TikTok', source: 'unknown' }\n}\n
+import { validateYouTubeUrl } from './youtube'
+
+export type UrlValidation = { valid: boolean; error?: string }
+export type TranscriptSource = 'youtube' | 'instagram' | 'tiktok' | 'unknown'
+
+export function isHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value)
+    return u.protocol === 'http:' || u.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+export function validateShortsUrl(url: string): UrlValidation {
+  if (!url || !isHttpUrl(url)) return { valid: false, error: 'Enter a valid URL' }
+  const host = new URL(url).hostname.toLowerCase()
+
+  const isYouTube = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)
+  const isInstagram = /(^|\.)instagram\.com$/.test(host)
+  const isTikTok = /(^|\.)tiktok\.com$/.test(host) || /(^|\.)vt\.tiktok\.com$/.test(host)
+
+  if (!(isYouTube || isInstagram || isTikTok)) {
+    return { valid: false, error: 'Supported: YouTube, Instagram, TikTok' }
+  }
+
+  // Light path checks
+  if (isYouTube) {
+    // Accept shorts, watch, youtu.be, embed, etc.
+    return { valid: true }
+  }
+  if (isInstagram) {
+    // Expect /reel/, /reels/, or /p/
+    if (/\/reel\//i.test(url) || /\/reels\//i.test(url) || /\/p\//i.test(url))
+      return { valid: true }
+    return { valid: false, error: 'Use a Reel/Post URL' }
+  }
+  if (isTikTok) {
+    // Expect /video/ or a vt.tiktok short link
+    if (/\/video\//i.test(url) || /vt\.tiktok\.com\//i.test(url)) return { valid: true }
+    return { valid: false, error: 'Use a TikTok video URL' }
+  }
+
+  return { valid: false, error: 'Unsupported URL' }
+}
+
+export function getTranscriptSource(url: string): TranscriptSource {
+  if (!isHttpUrl(url)) return 'unknown'
+  const host = new URL(url).hostname.toLowerCase()
+
+  const isYouTube = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)
+  const isInstagram = /(^|\.)instagram\.com$/.test(host)
+  const isTikTok = /(^|\.)tiktok\.com$/.test(host) || /(^|\.)vt\.tiktok\.com$/.test(host)
+
+  if (isYouTube) return 'youtube'
+  if (isInstagram) return 'instagram'
+  if (isTikTok) return 'tiktok'
+  return 'unknown'
+}
+
+export function validateTranscriptUrl(url: string): UrlValidation & { source?: TranscriptSource } {
+  const source = getTranscriptSource(url)
+  if (source === 'youtube') {
+    const v = validateYouTubeUrl(url)
+    return { ...v, source }
+  }
+  if (source === 'instagram' || source === 'tiktok') {
+    const v = validateShortsUrl(url)
+    return { ...v, source }
+  }
+  return { valid: false, error: 'Supported: YouTube, Instagram, TikTok', source: 'unknown' }
+}

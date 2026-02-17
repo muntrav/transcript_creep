@@ -1,1 +1,210 @@
-# CLAUDE.md\n\nThis file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.\n\n## Project Overview\n\nTranscriptcreep is a Next.js 14 App Router application for extracting YouTube video transcripts. The app provides a simple web interface where users can paste a YouTube URL and receive the video's transcript, which they can copy or download.\n\n## Development Commands\n\n```bash\n# Install dependencies\nnpm install\n\n# Run development server (port 3000)\nnpm run dev\n\n# Build for production\nnpm run build\n\n# Start production server\nnpm start\n\n# Run linter\nnpm run lint\n\n# Run tests (Vitest)\nnpm test\n\n# Run a single test file\nnpx vitest tests/health.test.ts\n```\n\n## Architecture\n\n### Core Structure\n\n- **Next.js App Router**: Uses the `app/` directory structure (Next.js 14)\n- **API Routes**: Server-side logic in `app/api/` directory\n  - `app/api/health/route.ts`: Health check endpoint (GET)\n  - `app/api/transcript/route.ts`: Transcript extraction endpoint with retry logic (POST)\n  - `app/api/download/route.ts`: Video download link fetching endpoint (POST)\n- **Shared Libraries**: Utility functions in `lib/` directory\n  - `lib/youtube.ts`: YouTube URL validation and video ID extraction\n  - `lib/transcript.ts`: Transcript fetching logic with automatic retry mechanism\n  - `lib/health.ts`: Health check logic\n- **Tests**: Located in `tests/` directory, run with Vitest\n\n### Path Aliases\n\nThe project uses `@/` as an alias for the root directory:\n\n```typescript\nimport { validateYouTubeUrl } from '@/lib/youtube'\nimport { getHealth } from '@/app/api/health/route'\n```\n\nThis is configured in:\n\n- `tsconfig.json`: `"@/*": ["./*"]`\n- `next.config.js`: webpack alias configuration\n- `vitest.config.ts`: test alias configuration\n\n### Transcript Fetching Flow\n\n1. User submits YouTube URL via [app/page.tsx](app/page.tsx)\n2. Frontend POSTs to `/api/transcript`\n3. [app/api/transcript/route.ts](app/api/transcript/route.ts) validates URL using `validateYouTubeUrl()`\n   - **Important**: This route uses `export const runtime = 'nodejs'` to ensure Node.js runtime (required for network requests)\n4. [lib/transcript.ts](lib/transcript.ts) calls `getTranscript()` which uses a multi-tier fallback system:\n   - **Primary Method (Production)**: RapidAPI YouTube Transcript service via [lib/transcript-rapidapi.ts](lib/transcript-rapidapi.ts)\n     - Reliable on Vercel deployment (avoids IP blocking)\n     - Requires `RAPIDAPI_KEY` environment variable\n     - Same API key used for video downloads\n   - **Fallback Method 1**: Direct library fetch via `@danielxceron/youtube-transcript`\n     - Works locally but may fail on Vercel due to IP blocking\n     - Automatic retry logic (2 attempts with exponential backoff)\n     - Retry delays: 500ms, 1000ms between attempts\n   - **Fallback Method 2**: Custom timedtext API implementation\n     - Direct calls to YouTube's timedtext API\n     - Supports JSON3 and VTT formats\n     - May also fail on Vercel due to IP blocking\n5. All methods decode HTML entities in transcript text (e.g., `&amp;#39;` → `'`)\n6. Response includes:\n   - `transcript`: Full concatenated text with decoded HTML entities\n   - `segments`: Array of `{ text, duration, offset }` objects\n   - `videoId`: Extracted video ID\n   - `language`: Caption language from YouTube\n\n### Video Download Flow\n\n1. User clicks "Download Video" button and selects quality (360p, 720p, 1080p)\n2. Frontend POSTs to `/api/download` with video URL and quality\n3. [app/api/download/route.ts](app/api/download/route.ts):\n   - Validates URL and extracts video ID\n   - Calls YTStream API (RapidAPI) to get download link\n   - Returns download URL, video title, and thumbnail\n4. Frontend opens download link in new tab\n5. **Setup Required**: Add two RapidAPI keys to `.env.local` file:\n\n   ```\n   RAPIDAPI_KEY=your_ytstream_api_key_here\n   RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here\n   ```\n\n   - Get your free API keys from [RapidAPI](https://rapidapi.com/)\n   - Subscribe to both APIs (each provides its own API key):\n     - [YTStream API](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos) for video downloads → use as `RAPIDAPI_KEY`\n     - [YouTube Captions Transcript API](https://rapidapi.com/LucaBert89/api/youtube-captions-transcript-subtitles-video-combiner) for transcript fetching → use as `RAPIDAPI_TRANSCRIPT_KEY`\n\n### Error Handling\n\nThe app uses a custom `TranscriptError` class with error codes:\n\n- `INVALID_URL`: YouTube URL format is invalid\n- `NO_TRANSCRIPT`: Video has no available captions\n- `FETCH_ERROR`: Generic fetch failure\n- `UNKNOWN_ERROR`: Unexpected errors\n\nAPI responses follow the pattern:\n\n```typescript\n{ success: boolean, data?: any, error?: string, code?: string }\n```\n\n## Code Style\n\n### Formatting (Prettier)\n\n- No semicolons\n- Single quotes\n- Trailing commas (ES5)\n- 100 character line width\n- 2 space indentation\n\n### Linting (ESLint)\n\n- Extends `next/core-web-vitals` and `prettier`\n- `prettier/prettier` errors enforced\n- `no-unused-vars` and `@typescript-eslint/no-explicit-any` produce warnings\n\n### TypeScript\n\n- Strict mode enabled\n- Target: ES2022\n- Module resolution: Bundler\n\n## Testing\n\nTests use Vitest with jsdom environment:\n\n- Test files: `tests/**/*.{test,spec}.{ts,tsx}`\n- Globals enabled (no need to import `describe`, `it`, `expect`)\n- React plugin enabled for component testing\n\n## Key Implementation Notes\n\n### YouTube URL Support\n\nThe app supports three YouTube URL formats:\n\n- Standard: `https://www.youtube.com/watch?v=VIDEO_ID`\n- Short: `https://youtu.be/VIDEO_ID`\n- Embed: `https://www.youtube.com/embed/VIDEO_ID`\n\nVideo IDs are always 11 characters: alphanumeric, underscore, or hyphen.\n\n### Client-Side State Management\n\n[app/page.tsx](app/page.tsx) is a client component (`"use client"`) that manages:\n\n- Form input state\n- Loading state\n- Error messages\n- Transcript display (with/without timestamps)\n- Video player embed\n- Quality dropdown for video download\n- Toast notifications\n\n**Key Features**:\n\n- **Copy to Clipboard**: Copies current transcript format (with or without timestamps)\n- **Download as Text**: Downloads transcript in current format\n- **Toggle Timestamps**: Real-time toggle between long text format and timestamped segments\n- **Video Player**: Embedded YouTube player\n- **Video Download**: Quality selector (360p, 720p, 1080p) with API-based download\n- **Toast Notifications**: User feedback for actions (success, error, info)\n\n### Important Implementation Details\n\n**YouTube Transcript Package**: Uses `@danielxceron/youtube-transcript` instead of the original `youtube-transcript` package. The original package (v1.2.1) was returning empty arrays and is outdated. The fork by @danielxceron includes a fallback system for improved reliability.\n\n**Node.js Runtime Requirement**: Both `/api/transcript` and `/api/download` routes MUST use Node.js runtime (`export const runtime = 'nodejs'`) instead of Edge runtime, as the packages require full Node.js network access.\n\n**Retry Logic**: The transcript fetching includes automatic retry with exponential backoff to handle intermittent network failures. This improves reliability when YouTube's servers are slow to respond.\n\n**Environment Variables**: Both transcript fetching and video download features require RapidAPI keys:\n\n- Create a `.env.local` file in the project root\n- Add two separate API keys:\n  ```\n  RAPIDAPI_KEY=your_ytstream_api_key_here\n  RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here\n  ```\n- Get free keys from [RapidAPI](https://rapidapi.com/) by subscribing to both APIs:\n  - [YouTube Captions Transcript API](https://rapidapi.com/LucaBert89/api/youtube-captions-transcript-subtitles-video-combiner) → `RAPIDAPI_TRANSCRIPT_KEY` (required for production/Vercel)\n  - [YTStream API](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos) → `RAPIDAPI_KEY`\n- Each API subscription provides its own unique API key\n- The free tier includes limited requests per month\n- **Important for Vercel**: The RapidAPI transcript method is the primary method used in production to avoid IP blocking issues that occur with direct YouTube scraping from serverless functions\n
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Transcriptcreep is a Next.js 14 App Router application for extracting YouTube video transcripts. The app provides a simple web interface where users can paste a YouTube URL and receive the video's transcript, which they can copy or download.
+
+## Development Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Run development server (port 3000)
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+
+# Run linter
+npm run lint
+
+# Run tests (Vitest)
+npm test
+
+# Run a single test file
+npx vitest tests/health.test.ts
+```
+
+## Architecture
+
+### Core Structure
+
+- **Next.js App Router**: Uses the `app/` directory structure (Next.js 14)
+- **API Routes**: Server-side logic in `app/api/` directory
+  - `app/api/health/route.ts`: Health check endpoint (GET)
+  - `app/api/transcript/route.ts`: Transcript extraction endpoint with retry logic (POST)
+  - `app/api/download/route.ts`: Video download link fetching endpoint (POST)
+- **Shared Libraries**: Utility functions in `lib/` directory
+  - `lib/youtube.ts`: YouTube URL validation and video ID extraction
+  - `lib/transcript.ts`: Transcript fetching logic with automatic retry mechanism
+  - `lib/health.ts`: Health check logic
+- **Tests**: Located in `tests/` directory, run with Vitest
+
+### Path Aliases
+
+The project uses `@/` as an alias for the root directory:
+
+```typescript
+import { validateYouTubeUrl } from '@/lib/youtube'
+import { getHealth } from '@/app/api/health/route'
+```
+
+This is configured in:
+
+- `tsconfig.json`: `"@/*": ["./*"]`
+- `next.config.js`: webpack alias configuration
+- `vitest.config.ts`: test alias configuration
+
+### Transcript Fetching Flow
+
+1. User submits YouTube URL via [app/page.tsx](app/page.tsx)
+2. Frontend POSTs to `/api/transcript`
+3. [app/api/transcript/route.ts](app/api/transcript/route.ts) validates URL using `validateYouTubeUrl()`
+   - **Important**: This route uses `export const runtime = 'nodejs'` to ensure Node.js runtime (required for network requests)
+4. [lib/transcript.ts](lib/transcript.ts) calls `getTranscript()` which uses a multi-tier fallback system:
+   - **Primary Method (Production)**: RapidAPI YouTube Transcript service via [lib/transcript-rapidapi.ts](lib/transcript-rapidapi.ts)
+     - Reliable on Vercel deployment (avoids IP blocking)
+     - Requires `RAPIDAPI_KEY` environment variable
+     - Same API key used for video downloads
+   - **Fallback Method 1**: Direct library fetch via `@danielxceron/youtube-transcript`
+     - Works locally but may fail on Vercel due to IP blocking
+     - Automatic retry logic (2 attempts with exponential backoff)
+     - Retry delays: 500ms, 1000ms between attempts
+   - **Fallback Method 2**: Custom timedtext API implementation
+     - Direct calls to YouTube's timedtext API
+     - Supports JSON3 and VTT formats
+     - May also fail on Vercel due to IP blocking
+5. All methods decode HTML entities in transcript text (e.g., `&amp;#39;` → `'`)
+6. Response includes:
+   - `transcript`: Full concatenated text with decoded HTML entities
+   - `segments`: Array of `{ text, duration, offset }` objects
+   - `videoId`: Extracted video ID
+   - `language`: Caption language from YouTube
+
+### Video Download Flow
+
+1. User clicks "Download Video" button and selects quality (360p, 720p, 1080p)
+2. Frontend POSTs to `/api/download` with video URL and quality
+3. [app/api/download/route.ts](app/api/download/route.ts):
+   - Validates URL and extracts video ID
+   - Calls YTStream API (RapidAPI) to get download link
+   - Returns download URL, video title, and thumbnail
+4. Frontend opens download link in new tab
+5. **Setup Required**: Add two RapidAPI keys to `.env.local` file:
+
+   ```
+   RAPIDAPI_KEY=your_ytstream_api_key_here
+   RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here
+   ```
+
+   - Get your free API keys from [RapidAPI](https://rapidapi.com/)
+   - Subscribe to both APIs (each provides its own API key):
+     - [YTStream API](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos) for video downloads → use as `RAPIDAPI_KEY`
+     - [YouTube Captions Transcript API](https://rapidapi.com/LucaBert89/api/youtube-captions-transcript-subtitles-video-combiner) for transcript fetching → use as `RAPIDAPI_TRANSCRIPT_KEY`
+
+### Error Handling
+
+The app uses a custom `TranscriptError` class with error codes:
+
+- `INVALID_URL`: YouTube URL format is invalid
+- `NO_TRANSCRIPT`: Video has no available captions
+- `FETCH_ERROR`: Generic fetch failure
+- `UNKNOWN_ERROR`: Unexpected errors
+
+API responses follow the pattern:
+
+```typescript
+{ success: boolean, data?: any, error?: string, code?: string }
+```
+
+## Code Style
+
+### Formatting (Prettier)
+
+- No semicolons
+- Single quotes
+- Trailing commas (ES5)
+- 100 character line width
+- 2 space indentation
+
+### Linting (ESLint)
+
+- Extends `next/core-web-vitals` and `prettier`
+- `prettier/prettier` errors enforced
+- `no-unused-vars` and `@typescript-eslint/no-explicit-any` produce warnings
+
+### TypeScript
+
+- Strict mode enabled
+- Target: ES2022
+- Module resolution: Bundler
+
+## Testing
+
+Tests use Vitest with jsdom environment:
+
+- Test files: `tests/**/*.{test,spec}.{ts,tsx}`
+- Globals enabled (no need to import `describe`, `it`, `expect`)
+- React plugin enabled for component testing
+
+## Key Implementation Notes
+
+### YouTube URL Support
+
+The app supports three YouTube URL formats:
+
+- Standard: `https://www.youtube.com/watch?v=VIDEO_ID`
+- Short: `https://youtu.be/VIDEO_ID`
+- Embed: `https://www.youtube.com/embed/VIDEO_ID`
+
+Video IDs are always 11 characters: alphanumeric, underscore, or hyphen.
+
+### Client-Side State Management
+
+[app/page.tsx](app/page.tsx) is a client component (`"use client"`) that manages:
+
+- Form input state
+- Loading state
+- Error messages
+- Transcript display (with/without timestamps)
+- Video player embed
+- Quality dropdown for video download
+- Toast notifications
+
+**Key Features**:
+
+- **Copy to Clipboard**: Copies current transcript format (with or without timestamps)
+- **Download as Text**: Downloads transcript in current format
+- **Toggle Timestamps**: Real-time toggle between long text format and timestamped segments
+- **Video Player**: Embedded YouTube player
+- **Video Download**: Quality selector (360p, 720p, 1080p) with API-based download
+- **Toast Notifications**: User feedback for actions (success, error, info)
+
+### Important Implementation Details
+
+**YouTube Transcript Package**: Uses `@danielxceron/youtube-transcript` instead of the original `youtube-transcript` package. The original package (v1.2.1) was returning empty arrays and is outdated. The fork by @danielxceron includes a fallback system for improved reliability.
+
+**Node.js Runtime Requirement**: Both `/api/transcript` and `/api/download` routes MUST use Node.js runtime (`export const runtime = 'nodejs'`) instead of Edge runtime, as the packages require full Node.js network access.
+
+**Retry Logic**: The transcript fetching includes automatic retry with exponential backoff to handle intermittent network failures. This improves reliability when YouTube's servers are slow to respond.
+
+**Environment Variables**: Both transcript fetching and video download features require RapidAPI keys:
+
+- Create a `.env.local` file in the project root
+- Add two separate API keys:
+  ```
+  RAPIDAPI_KEY=your_ytstream_api_key_here
+  RAPIDAPI_TRANSCRIPT_KEY=your_transcript_api_key_here
+  ```
+- Get free keys from [RapidAPI](https://rapidapi.com/) by subscribing to both APIs:
+  - [YouTube Captions Transcript API](https://rapidapi.com/LucaBert89/api/youtube-captions-transcript-subtitles-video-combiner) → `RAPIDAPI_TRANSCRIPT_KEY` (required for production/Vercel)
+  - [YTStream API](https://rapidapi.com/ytjar/api/ytstream-download-youtube-videos) → `RAPIDAPI_KEY`
+- Each API subscription provides its own unique API key
+- The free tier includes limited requests per month
+- **Important for Vercel**: The RapidAPI transcript method is the primary method used in production to avoid IP blocking issues that occur with direct YouTube scraping from serverless functions

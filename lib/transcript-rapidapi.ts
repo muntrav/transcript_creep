@@ -1,1 +1,180 @@
-import { TranscriptResult, TranscriptSegment, TranscriptError } from './transcript'\nimport { decodeHtmlEntities } from './html'\n\n/**\n * Parses SRT subtitle format into TranscriptSegment array\n */\nexport function parseSRTToSegments(srtText: string): TranscriptSegment[] {\n  const segments: TranscriptSegment[] = []\n  // Normalize Windows and old Mac line endings to LF to avoid stray \r\n  const normalized = srtText.replace(/\r\n?|\u000d/g, '\n')\n  const blocks = normalized.split(/\n{2,}/)\n\n  for (const block of blocks) {\n    const lines = block.trim().split('\n')\n    if (lines.length < 3) continue\n\n    // Skip the index number (line 0)\n    const timeLine = lines[1]\n    const textLines = lines.slice(2)\n\n    // Parse SRT timestamp: 00:00:21,050 --> 00:00:25,910\n    const timeMatch = timeLine.match(\n      /(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/\n    )\n    if (!timeMatch) continue\n\n    const startMs =\n      (parseInt(timeMatch[1], 10) * 3600 +\n        parseInt(timeMatch[2], 10) * 60 +\n        parseInt(timeMatch[3], 10)) *\n        1000 +\n      parseInt(timeMatch[4], 10)\n    const endMs =\n      (parseInt(timeMatch[5], 10) * 3600 +\n        parseInt(timeMatch[6], 10) * 60 +\n        parseInt(timeMatch[7], 10)) *\n        1000 +\n      parseInt(timeMatch[8], 10)\n\n    // Join, collapse whitespace, and decode HTML entities (e.g., &#39; → ', &quot; → ")\n    const text = decodeHtmlEntities(\n      textLines\n        .map((l) => l.trim())\n        .join(' ')\n        .replace(/\s+/g, ' ')\n        .trim()\n    )\n    if (text) {\n      segments.push({\n        text,\n        offset: startMs,\n        duration: endMs - startMs,\n      })\n    }\n  }\n\n  return segments\n}\n\n/**\n * Fetches YouTube transcript using RapidAPI service\n * This method works reliably on Vercel as it proxies through RapidAPI's infrastructure\n */\nexport async function getTranscriptViaRapidAPI(videoId: string): Promise<TranscriptResult> {\n  const apiKey = process.env.RAPIDAPI_TRANSCRIPT_KEY\n\n  if (!apiKey) {\n    throw new TranscriptError(\n      'RapidAPI Transcript key not configured. Add RAPIDAPI_TRANSCRIPT_KEY to environment variables.',\n      'CONFIG_ERROR'\n    )\n  }\n\n  console.log('[RapidAPI] Fetching transcript for video:', videoId)\n\n  const url = `https://youtube-captions-transcript-subtitles-video-combiner.p.rapidapi.com/download-all/${videoId}?format_subtitle=srt&format_answer=json`\n\n  try {\n    const response = await fetch(url, {\n      method: 'GET',\n      headers: {\n        'x-rapidapi-host': 'youtube-captions-transcript-subtitles-video-combiner.p.rapidapi.com',\n        'x-rapidapi-key': apiKey,\n      },\n    })\n\n    if (!response.ok) {\n      const errorText = await response.text().catch(() => 'Unknown error')\n      console.error('[RapidAPI] Request failed:', {\n        status: response.status,\n        statusText: response.statusText,\n        body: errorText,\n      })\n\n      if (response.status === 404) {\n        throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')\n      }\n\n      if (response.status === 403 || response.status === 401) {\n        throw new TranscriptError(\n          'RapidAPI authentication failed. Check your API key.',\n          'AUTH_ERROR'\n        )\n      }\n\n      throw new TranscriptError(\n        `RapidAPI request failed: ${response.status} ${response.statusText}`,\n        'API_ERROR'\n      )\n    }\n\n    const data = await response.json()\n    console.log('[RapidAPI] Response received:', {\n      captionCount: Array.isArray(data) ? data.length : 0,\n      languages: Array.isArray(data) ? data.map((d: any) => d.languageCode).join(', ') : 'none',\n    })\n\n    if (!Array.isArray(data) || data.length === 0) {\n      throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')\n    }\n\n    // Try to find English caption first\n    const preferredLanguages = ['en', 'en-US', 'en-GB']\n    let selectedCaption = data.find((item: any) => preferredLanguages.includes(item.languageCode))\n\n    // If no exact match, try languages starting with 'en'\n    if (!selectedCaption) {\n      selectedCaption = data.find((item: any) => item.languageCode?.toLowerCase().startsWith('en'))\n    }\n\n    // Otherwise, use the first available caption\n    if (!selectedCaption) {\n      selectedCaption = data[0]\n    }\n\n    console.log('[RapidAPI] Using caption language:', selectedCaption.languageCode)\n\n    // Parse SRT subtitle format\n    const segments = parseSRTToSegments(selectedCaption.subtitle)\n\n    if (segments.length === 0) {\n      throw new TranscriptError('Failed to parse transcript data', 'FETCH_ERROR')\n    }\n\n    const fullTranscript = segments\n      .map((s) => s.text)\n      .join(' ')\n      .replace(/\s+/g, ' ')\n      .trim()\n\n    console.log('[RapidAPI] Successfully fetched transcript:', {\n      segmentCount: segments.length,\n      transcriptLength: fullTranscript.length,\n      language: selectedCaption.languageCode,\n    })\n\n    return {\n      transcript: fullTranscript,\n      segments,\n      videoId,\n      language: selectedCaption.languageCode,\n    }\n  } catch (error: any) {\n    // If it's already a TranscriptError, rethrow it\n    if (error instanceof TranscriptError) {\n      throw error\n    }\n\n    // Network or parsing errors\n    console.error('[RapidAPI] Unexpected error:', {\n      message: error.message,\n      name: error.name,\n    })\n\n    throw new TranscriptError(\n      `Failed to fetch transcript via RapidAPI: ${error.message}`,\n      'FETCH_ERROR'\n    )\n  }\n}\n
+import { TranscriptResult, TranscriptSegment, TranscriptError } from './transcript'
+import { decodeHtmlEntities } from './html'
+
+/**
+ * Parses SRT subtitle format into TranscriptSegment array
+ */
+export function parseSRTToSegments(srtText: string): TranscriptSegment[] {
+  const segments: TranscriptSegment[] = []
+  // Normalize Windows and old Mac line endings to LF to avoid stray \r
+  const normalized = srtText.replace(/\r\n?|\u000d/g, '\n')
+  const blocks = normalized.split(/\n{2,}/)
+
+  for (const block of blocks) {
+    const lines = block.trim().split('\n')
+    if (lines.length < 3) continue
+
+    // Skip the index number (line 0)
+    const timeLine = lines[1]
+    const textLines = lines.slice(2)
+
+    // Parse SRT timestamp: 00:00:21,050 --> 00:00:25,910
+    const timeMatch = timeLine.match(
+      /(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})/
+    )
+    if (!timeMatch) continue
+
+    const startMs =
+      (parseInt(timeMatch[1], 10) * 3600 +
+        parseInt(timeMatch[2], 10) * 60 +
+        parseInt(timeMatch[3], 10)) *
+        1000 +
+      parseInt(timeMatch[4], 10)
+    const endMs =
+      (parseInt(timeMatch[5], 10) * 3600 +
+        parseInt(timeMatch[6], 10) * 60 +
+        parseInt(timeMatch[7], 10)) *
+        1000 +
+      parseInt(timeMatch[8], 10)
+
+    // Join, collapse whitespace, and decode HTML entities (e.g., &#39; → ', &quot; → ")
+    const text = decodeHtmlEntities(
+      textLines
+        .map((l) => l.trim())
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    if (text) {
+      segments.push({
+        text,
+        offset: startMs,
+        duration: endMs - startMs,
+      })
+    }
+  }
+
+  return segments
+}
+
+/**
+ * Fetches YouTube transcript using RapidAPI service
+ * This method works reliably on Vercel as it proxies through RapidAPI's infrastructure
+ */
+export async function getTranscriptViaRapidAPI(videoId: string): Promise<TranscriptResult> {
+  const apiKey = process.env.RAPIDAPI_TRANSCRIPT_KEY
+
+  if (!apiKey) {
+    throw new TranscriptError(
+      'RapidAPI Transcript key not configured. Add RAPIDAPI_TRANSCRIPT_KEY to environment variables.',
+      'CONFIG_ERROR'
+    )
+  }
+
+  console.log('[RapidAPI] Fetching transcript for video:', videoId)
+
+  const url = `https://youtube-captions-transcript-subtitles-video-combiner.p.rapidapi.com/download-all/${videoId}?format_subtitle=srt&format_answer=json`
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-host': 'youtube-captions-transcript-subtitles-video-combiner.p.rapidapi.com',
+        'x-rapidapi-key': apiKey,
+      },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error')
+      console.error('[RapidAPI] Request failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText,
+      })
+
+      if (response.status === 404) {
+        throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')
+      }
+
+      if (response.status === 403 || response.status === 401) {
+        throw new TranscriptError(
+          'RapidAPI authentication failed. Check your API key.',
+          'AUTH_ERROR'
+        )
+      }
+
+      throw new TranscriptError(
+        `RapidAPI request failed: ${response.status} ${response.statusText}`,
+        'API_ERROR'
+      )
+    }
+
+    const data = await response.json()
+    console.log('[RapidAPI] Response received:', {
+      captionCount: Array.isArray(data) ? data.length : 0,
+      languages: Array.isArray(data) ? data.map((d: any) => d.languageCode).join(', ') : 'none',
+    })
+
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new TranscriptError('No transcript available for this video', 'NO_TRANSCRIPT')
+    }
+
+    // Try to find English caption first
+    const preferredLanguages = ['en', 'en-US', 'en-GB']
+    let selectedCaption = data.find((item: any) => preferredLanguages.includes(item.languageCode))
+
+    // If no exact match, try languages starting with 'en'
+    if (!selectedCaption) {
+      selectedCaption = data.find((item: any) => item.languageCode?.toLowerCase().startsWith('en'))
+    }
+
+    // Otherwise, use the first available caption
+    if (!selectedCaption) {
+      selectedCaption = data[0]
+    }
+
+    console.log('[RapidAPI] Using caption language:', selectedCaption.languageCode)
+
+    // Parse SRT subtitle format
+    const segments = parseSRTToSegments(selectedCaption.subtitle)
+
+    if (segments.length === 0) {
+      throw new TranscriptError('Failed to parse transcript data', 'FETCH_ERROR')
+    }
+
+    const fullTranscript = segments
+      .map((s) => s.text)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    console.log('[RapidAPI] Successfully fetched transcript:', {
+      segmentCount: segments.length,
+      transcriptLength: fullTranscript.length,
+      language: selectedCaption.languageCode,
+    })
+
+    return {
+      transcript: fullTranscript,
+      segments,
+      videoId,
+      language: selectedCaption.languageCode,
+    }
+  } catch (error: any) {
+    // If it's already a TranscriptError, rethrow it
+    if (error instanceof TranscriptError) {
+      throw error
+    }
+
+    // Network or parsing errors
+    console.error('[RapidAPI] Unexpected error:', {
+      message: error.message,
+      name: error.name,
+    })
+
+    throw new TranscriptError(
+      `Failed to fetch transcript via RapidAPI: ${error.message}`,
+      'FETCH_ERROR'
+    )
+  }
+}

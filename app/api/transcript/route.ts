@@ -1,1 +1,75 @@
-import { NextResponse } from 'next/server'\nimport { validateTranscriptUrl } from '@/lib/urls'\nimport { getTranscript, TranscriptError } from '@/lib/transcript'\nimport { getTranscriptViaSupadata } from '@/lib/transcript-supadata'\n\n// Force this route to use Node.js runtime instead of Edge\nexport const runtime = 'nodejs'\n// Prefer a US region to avoid EU consent interstitials\nexport const preferredRegion = ['iad1']\n\ntype TranscriptRequest = {\n  videoUrl?: string\n}\n\nexport async function POST(request: Request) {\n  try {\n    const body: TranscriptRequest = await request.json()\n    const url = body.videoUrl ?? ''\n\n    const validation = validateTranscriptUrl(url)\n    if (!validation.valid) {\n      return NextResponse.json(\n        {\n          success: false,\n          error: validation.error,\n        },\n        { status: 400 }\n      )\n    }\n\n    console.log('Attempting to fetch transcript for URL:', url)\n    const result =\n      validation.source === 'youtube'\n        ? await getTranscript(url)\n        : await getTranscriptViaSupadata(url)\n    result.sourceUrl = url\n    result.provider = validation.source || result.provider\n    console.log('Successfully fetched transcript:', {\n      segmentsCount: result.segments.length,\n      transcriptLength: result.transcript.length,\n      language: result.language,\n      provider: result.provider,\n    })\n\n    return NextResponse.json({\n      success: true,\n      data: result,\n    })\n  } catch (error: unknown) {\n    // Handle known transcript errors\n    if (error instanceof TranscriptError) {\n      return NextResponse.json(\n        {\n          success: false,\n          error: error.message,\n          code: error.code,\n        },\n        {\n          status: error.code === 'INVALID_URL' ? 400 : error.code === 'NO_TRANSCRIPT' ? 404 : 500,\n        }\n      )\n    }\n\n    // Log and return generic error for unknown issues\n    console.error('Unexpected error:', error)\n    return NextResponse.json(\n      {\n        success: false,\n        error: 'An unexpected error occurred',\n        code: 'UNKNOWN_ERROR',\n      },\n      { status: 500 }\n    )\n  }\n}\n
+import { NextResponse } from 'next/server'
+import { validateTranscriptUrl } from '@/lib/urls'
+import { getTranscript, TranscriptError } from '@/lib/transcript'
+import { getTranscriptViaSupadata } from '@/lib/transcript-supadata'
+
+// Force this route to use Node.js runtime instead of Edge
+export const runtime = 'nodejs'
+// Prefer a US region to avoid EU consent interstitials
+export const preferredRegion = ['iad1']
+
+type TranscriptRequest = {
+  videoUrl?: string
+}
+
+export async function POST(request: Request) {
+  try {
+    const body: TranscriptRequest = await request.json()
+    const url = body.videoUrl ?? ''
+
+    const validation = validateTranscriptUrl(url)
+    if (!validation.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: validation.error,
+        },
+        { status: 400 }
+      )
+    }
+
+    console.log('Attempting to fetch transcript for URL:', url)
+    const result =
+      validation.source === 'youtube'
+        ? await getTranscript(url)
+        : await getTranscriptViaSupadata(url)
+    result.sourceUrl = url
+    result.provider = validation.source || result.provider
+    console.log('Successfully fetched transcript:', {
+      segmentsCount: result.segments.length,
+      transcriptLength: result.transcript.length,
+      language: result.language,
+      provider: result.provider,
+    })
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+    })
+  } catch (error: unknown) {
+    // Handle known transcript errors
+    if (error instanceof TranscriptError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          code: error.code,
+        },
+        {
+          status: error.code === 'INVALID_URL' ? 400 : error.code === 'NO_TRANSCRIPT' ? 404 : 500,
+        }
+      )
+    }
+
+    // Log and return generic error for unknown issues
+    console.error('Unexpected error:', error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'An unexpected error occurred',
+        code: 'UNKNOWN_ERROR',
+      },
+      { status: 500 }
+    )
+  }
+}

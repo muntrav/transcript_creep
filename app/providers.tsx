@@ -1,1 +1,84 @@
-'use client'\n\nimport React, { createContext, useContext, useEffect, useState, useMemo } from 'react'\nimport { ThemeProvider as MuiThemeProvider } from '@mui/material/styles'\nimport CssBaseline from '@mui/material/CssBaseline'\nimport { lightTheme, darkTheme } from './theme'\n\ntype ThemeMode = 'light' | 'dark' | 'system'\n\ntype ThemeContextType = {\n  mode: ThemeMode\n  setMode: (mode: ThemeMode) => void\n  actualTheme: 'light' | 'dark'\n}\n\nconst ThemeContext = createContext<ThemeContextType | undefined>(undefined)\n\nconst THEME_STORAGE_KEY = 'transcriptcreep-theme-preference'\n\nexport function ThemeProvider({ children }: { children: React.ReactNode }) {\n  const [mode, setModeState] = useState<ThemeMode>('system')\n  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>('light')\n  const [mounted, setMounted] = useState(false)\n\n  // Detect system preference\n  useEffect(() => {\n    setMounted(true)\n\n    // Get saved preference or default to 'system'\n    const savedMode = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null\n    if (savedMode && ['light', 'dark', 'system'].includes(savedMode)) {\n      setModeState(savedMode)\n    }\n\n    // Listen for system preference changes\n    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')\n    setSystemPreference(mediaQuery.matches ? 'dark' : 'light')\n\n    const handleChange = (e: MediaQueryListEvent) => {\n      setSystemPreference(e.matches ? 'dark' : 'light')\n    }\n\n    mediaQuery.addEventListener('change', handleChange)\n    return () => mediaQuery.removeEventListener('change', handleChange)\n  }, [])\n\n  // Compute the actual theme based on mode and system preference\n  const actualTheme = useMemo(() => {\n    if (mode === 'system') {\n      return systemPreference\n    }\n    return mode\n  }, [mode, systemPreference])\n\n  // Save preference to localStorage\n  const setMode = (newMode: ThemeMode) => {\n    setModeState(newMode)\n    if (typeof window !== 'undefined') {\n      localStorage.setItem(THEME_STORAGE_KEY, newMode)\n    }\n  }\n\n  // Select the appropriate MUI theme\n  const theme = useMemo(() => {\n    return actualTheme === 'dark' ? darkTheme : lightTheme\n  }, [actualTheme])\n\n  return (\n    <ThemeContext.Provider value={{ mode, setMode, actualTheme }}>\n      <MuiThemeProvider theme={theme}>\n        <CssBaseline />\n        {children}\n      </MuiThemeProvider>\n    </ThemeContext.Provider>\n  )\n}\n\nexport function useThemeMode() {\n  const context = useContext(ThemeContext)\n  if (context === undefined) {\n    throw new Error('useThemeMode must be used within a ThemeProvider')\n  }\n  return context\n}\n
+'use client'
+
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
+import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
+import { lightTheme, darkTheme } from './theme'
+
+type ThemeMode = 'light' | 'dark' | 'system'
+
+type ThemeContextType = {
+  mode: ThemeMode
+  setMode: (mode: ThemeMode) => void
+  actualTheme: 'light' | 'dark'
+}
+
+const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
+
+const THEME_STORAGE_KEY = 'transcriptcreep-theme-preference'
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const [mode, setModeState] = useState<ThemeMode>('system')
+  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>('light')
+  const [mounted, setMounted] = useState(false)
+
+  // Detect system preference
+  useEffect(() => {
+    setMounted(true)
+
+    // Get saved preference or default to 'system'
+    const savedMode = localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null
+    if (savedMode && ['light', 'dark', 'system'].includes(savedMode)) {
+      setModeState(savedMode)
+    }
+
+    // Listen for system preference changes
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    setSystemPreference(mediaQuery.matches ? 'dark' : 'light')
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      setSystemPreference(e.matches ? 'dark' : 'light')
+    }
+
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [])
+
+  // Compute the actual theme based on mode and system preference
+  const actualTheme = useMemo(() => {
+    if (mode === 'system') {
+      return systemPreference
+    }
+    return mode
+  }, [mode, systemPreference])
+
+  // Save preference to localStorage
+  const setMode = (newMode: ThemeMode) => {
+    setModeState(newMode)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(THEME_STORAGE_KEY, newMode)
+    }
+  }
+
+  // Select the appropriate MUI theme
+  const theme = useMemo(() => {
+    return actualTheme === 'dark' ? darkTheme : lightTheme
+  }, [actualTheme])
+
+  return (
+    <ThemeContext.Provider value={{ mode, setMode, actualTheme }}>
+      <MuiThemeProvider theme={theme}>
+        <CssBaseline />
+        {children}
+      </MuiThemeProvider>
+    </ThemeContext.Provider>
+  )
+}
+
+export function useThemeMode() {
+  const context = useContext(ThemeContext)
+  if (context === undefined) {
+    throw new Error('useThemeMode must be used within a ThemeProvider')
+  }
+  return context
+}

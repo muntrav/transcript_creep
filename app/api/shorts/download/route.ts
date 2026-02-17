@@ -1,1 +1,53 @@
-import { NextResponse } from 'next/server'\nimport { fetchShortsInfo, buildContentDisposition } from '@/lib/shorts'\n\nexport const runtime = 'nodejs'\nexport const dynamic = 'force-dynamic'\nexport const maxDuration = 60\n\nasync function handleDownload(url: string) {\n  console.log('[Shorts] /download request for', url)\n  const info = await fetchShortsInfo(url)\n  console.log('[Shorts] /download resolved videoUrl', info.videoUrl?.slice(0, 80))\n\n  const upstream = await fetch(info.videoUrl)\n  if (!upstream.ok || !upstream.body) {\n    return NextResponse.json(\n      { success: false, error: `Failed to fetch media: ${upstream.status}` },\n      { status: 502 }\n    )\n  }\n  const headers = new Headers()\n  headers.set('Content-Type', upstream.headers.get('content-type') || 'video/mp4')\n  headers.set('Content-Disposition', buildContentDisposition(info.title || 'shorts', '.mp4'))\n  return new Response(upstream.body, { headers })\n}\n\nexport async function POST(request: Request) {\n  try {\n    const { url } = await request.json()\n    if (!url || typeof url !== 'string') {\n      return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })\n    }\n    return await handleDownload(url)\n  } catch (err: any) {\n    return NextResponse.json(\n      { success: false, error: err?.message || 'Download failed' },\n      { status: 500 }\n    )\n  }\n}\n\nexport async function GET(request: Request) {\n  try {\n    const u = new URL(request.url)\n    const url = u.searchParams.get('url') || ''\n    if (!url) return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })\n    return await handleDownload(url)\n  } catch (err: any) {\n    return NextResponse.json(\n      { success: false, error: err?.message || 'Download failed' },\n      { status: 500 }\n    )\n  }\n}\n
+import { NextResponse } from 'next/server'
+import { fetchShortsInfo, buildContentDisposition } from '@/lib/shorts'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
+
+async function handleDownload(url: string) {
+  console.log('[Shorts] /download request for', url)
+  const info = await fetchShortsInfo(url)
+  console.log('[Shorts] /download resolved videoUrl', info.videoUrl?.slice(0, 80))
+
+  const upstream = await fetch(info.videoUrl)
+  if (!upstream.ok || !upstream.body) {
+    return NextResponse.json(
+      { success: false, error: `Failed to fetch media: ${upstream.status}` },
+      { status: 502 }
+    )
+  }
+  const headers = new Headers()
+  headers.set('Content-Type', upstream.headers.get('content-type') || 'video/mp4')
+  headers.set('Content-Disposition', buildContentDisposition(info.title || 'shorts', '.mp4'))
+  return new Response(upstream.body, { headers })
+}
+
+export async function POST(request: Request) {
+  try {
+    const { url } = await request.json()
+    if (!url || typeof url !== 'string') {
+      return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })
+    }
+    return await handleDownload(url)
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Download failed' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const u = new URL(request.url)
+    const url = u.searchParams.get('url') || ''
+    if (!url) return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })
+    return await handleDownload(url)
+  } catch (err: any) {
+    return NextResponse.json(
+      { success: false, error: err?.message || 'Download failed' },
+      { status: 500 }
+    )
+  }
+}
