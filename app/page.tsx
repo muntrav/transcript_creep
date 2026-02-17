@@ -83,10 +83,7 @@ export default function HomePage() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
 
-  const urlValidation = useMemo(
-    () => (url ? validateTranscriptUrl(url) : { valid: false }),
-    [url]
-  )
+  const urlValidation = useMemo(() => (url ? validateTranscriptUrl(url) : { valid: false }), [url])
   const isUrlValid = urlValidation.valid
 
   // Show toast notification
@@ -531,7 +528,11 @@ export default function HomePage() {
                     <Typography variant="h6" gutterBottom fontWeight={600}>
                       Transcript Source
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ wordBreak: 'break-word' }}
+                    >
                       {transcriptData.sourceUrl || 'External video'}
                     </Typography>
                   </Box>
@@ -573,7 +574,9 @@ export default function HomePage() {
                     color="secondary"
                     startIcon={<CloudDownloadIcon />}
                     onClick={(e) => setQualityMenuAnchor(e.currentTarget)}
-                    disabled={loading || transcriptData.provider !== 'youtube' || !transcriptData.videoId}
+                    disabled={
+                      loading || transcriptData.provider !== 'youtube' || !transcriptData.videoId
+                    }
                   >
                     Download Video
                   </Button>
@@ -769,7 +772,7 @@ export default function HomePage() {
                                         </Typography>
                                         {section.actions.map((item, aIdx) => (
                                           <Typography key={aIdx} variant="body2">
-                                            • {item}
+                                            - {item}
                                           </Typography>
                                         ))}
                                       </Stack>
@@ -781,7 +784,7 @@ export default function HomePage() {
                                         </Typography>
                                         {section.examples.map((item, eIdx) => (
                                           <Typography key={eIdx} variant="body2">
-                                            • {item}
+                                            - {item}
                                           </Typography>
                                         ))}
                                       </Stack>
@@ -804,7 +807,7 @@ export default function HomePage() {
                               {summary.keyTakeaways.length ? (
                                 summary.keyTakeaways.map((item, idx) => (
                                   <Typography key={idx} variant="body2">
-                                    • {item}
+                                    - {item}
                                   </Typography>
                                 ))
                               ) : (
@@ -823,7 +826,7 @@ export default function HomePage() {
                               {summary.actionPlan.length ? (
                                 summary.actionPlan.map((item, idx) => (
                                   <Typography key={idx} variant="body2">
-                                    • {item}
+                                    - {item}
                                   </Typography>
                                 ))
                               ) : (
