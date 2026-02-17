@@ -23,20 +23,20 @@ import {
   AppBar,
   Toolbar,
   Paper,
+  CircularProgress,
 } from '@mui/material'
 import {
   Send as SendIcon,
   ContentCopy as CopyIcon,
   Download as DownloadIcon,
-  PlayArrow as PlayIcon,
   Schedule as ScheduleIcon,
   CloudDownload as CloudDownloadIcon,
-  Close as CloseIcon,
+  AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material'
 import ThemeToggle from '@/components/ThemeToggle'
 import PageSwitcher from '@/components/PageSwitcher'
 import { groupSegmentsByInterval } from '@/lib/segment-group'
-import { validateYouTubeUrl } from '@/lib/youtube'
+import { validateTranscriptUrl } from '@/lib/urls'
 
 type TranscriptSegment = {
   text: string
@@ -47,13 +47,28 @@ type TranscriptSegment = {
 type TranscriptData = {
   transcript: string
   segments: TranscriptSegment[]
-  videoId: string
+  videoId?: string
   language?: string
+  sourceUrl?: string
+  provider?: string
 }
 
 type ToastType = {
   message: string
   type: 'success' | 'error' | 'info'
+}
+
+type SummaryData = {
+  title: string
+  overview: string
+  sections: {
+    heading: string
+    content: string
+    actions?: string[]
+    examples?: string[]
+  }[]
+  keyTakeaways: string[]
+  actionPlan: string[]
 }
 
 export default function HomePage() {
@@ -64,8 +79,15 @@ export default function HomePage() {
   const [showTimestamps, setShowTimestamps] = useState(false)
   const [qualityMenuAnchor, setQualityMenuAnchor] = useState<null | HTMLElement>(null)
   const [toast, setToast] = useState<ToastType | null>(null)
+  const [summary, setSummary] = useState<SummaryData | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
 
-  const isYouTubeValid = useMemo(() => (url ? validateYouTubeUrl(url).valid : false), [url])
+  const urlValidation = useMemo(
+    () => (url ? validateTranscriptUrl(url) : { valid: false }),
+    [url]
+  )
+  const isUrlValid = urlValidation.valid
 
   // Show toast notification
   const showToast = (message: string, type: ToastType['type'] = 'success') => {
@@ -106,12 +128,14 @@ export default function HomePage() {
     setError(null)
     setTranscriptData(null)
     setShowTimestamps(false)
+    setSummary(null)
+    setSummaryError(null)
     setLoading(true)
 
     try {
-      const v = validateYouTubeUrl(url)
+      const v = validateTranscriptUrl(url)
       if (!v.valid) {
-        throw new Error(v.error || 'Please enter a valid YouTube URL')
+        throw new Error(v.error || 'Please enter a valid video URL')
       }
       const res = await fetch('/api/transcript', {
         method: 'POST',
@@ -159,8 +183,75 @@ export default function HomePage() {
     showToast('Transcript downloaded!')
   }
 
+  const formatSummaryText = (data: SummaryData) => {
+    const lines: string[] = []
+    if (data.title) lines.push(data.title, '')
+    if (data.overview) lines.push(data.overview.trim(), '')
+    if (data.sections?.length) {
+      for (const section of data.sections) {
+        if (section.heading) lines.push(section.heading)
+        if (section.content) lines.push(section.content)
+        if (section.actions?.length) {
+          lines.push('Actions:')
+          section.actions.forEach((a) => lines.push(`- ${a}`))
+        }
+        if (section.examples?.length) {
+          lines.push('Examples:')
+          section.examples.forEach((e) => lines.push(`- ${e}`))
+        }
+        lines.push('')
+      }
+    }
+    if (data.keyTakeaways?.length) {
+      lines.push('Key Takeaways:')
+      data.keyTakeaways.forEach((k) => lines.push(`- ${k}`))
+      lines.push('')
+    }
+    if (data.actionPlan?.length) {
+      lines.push('Action Plan:')
+      data.actionPlan.forEach((a) => lines.push(`- ${a}`))
+    }
+    return lines.join('\n').trim()
+  }
+
+  const copySummaryToClipboard = () => {
+    if (!summary) return
+    const text = formatSummaryText(summary)
+    if (!text) return
+    navigator.clipboard.writeText(text)
+    showToast('Summary copied!')
+  }
+
+  const summarizeTranscript = async () => {
+    if (!transcriptData?.transcript) return
+    setSummaryLoading(true)
+    setSummaryError(null)
+
+    try {
+      const res = await fetch('/api/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: transcriptData.transcript,
+          sourceUrl: transcriptData.sourceUrl,
+        }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        throw new Error(body?.error || 'Failed to summarize transcript')
+      }
+      setSummary(body.data)
+      showToast('Summary ready!')
+    } catch (err: any) {
+      setSummaryError(err.message || 'Failed to summarize transcript')
+      showToast(err.message || 'Failed to summarize transcript', 'error')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }
+
   const downloadVideo = async (quality: string) => {
-    if (!transcriptData) return
+    if (!transcriptData?.videoId || transcriptData.provider !== 'youtube') return
 
     setQualityMenuAnchor(null)
     setLoading(true)
@@ -299,18 +390,18 @@ export default function HomePage() {
                 fullWidth
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="Enter YouTube video URL..."
+                placeholder="Enter YouTube / TikTok / Instagram URL..."
                 variant="outlined"
                 disabled={loading}
-                error={Boolean(url) && !isYouTubeValid}
-                helperText={Boolean(url) && !isYouTubeValid ? 'Please enter a valid URL' : ' '}
+                error={Boolean(url) && !isUrlValid}
+                helperText={Boolean(url) && !isUrlValid ? urlValidation.error : ' '}
                 sx={{ flexGrow: 1 }}
               />
               <Button
                 type="submit"
                 variant="contained"
                 size="large"
-                disabled={loading || (url.length > 0 && !isYouTubeValid)}
+                disabled={loading || (url.length > 0 && !isUrlValid)}
                 endIcon={<SendIcon />}
                 sx={{
                   minWidth: { xs: '100%', md: 200 },
@@ -402,38 +493,61 @@ export default function HomePage() {
         {/* Results Section */}
         {transcriptData && (
           <Grid container spacing={3}>
-            {/* Video Player - Left Side */}
+            {/* Video / Source Details - Left Side */}
             <Grid item xs={12} lg={6}>
               <Card elevation={3} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <Box
-                  sx={{
-                    position: 'relative',
-                    paddingTop: '56.25%', // 16:9 aspect ratio
-                    bgcolor: 'black',
-                  }}
-                >
-                  <iframe
-                    src={`https://www.youtube.com/embed/${transcriptData.videoId}`}
-                    title="YouTube video player"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: '100%',
-                      border: 0,
+                {transcriptData.provider === 'youtube' && transcriptData.videoId ? (
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      paddingTop: '56.25%', // 16:9 aspect ratio
+                      bgcolor: 'black',
                     }}
-                  />
-                </Box>
+                  >
+                    <iframe
+                      src={`https://www.youtube.com/embed/${transcriptData.videoId}`}
+                      title="YouTube video player"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        border: 0,
+                      }}
+                    />
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      p: 3,
+                      bgcolor: 'background.paper',
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography variant="h6" gutterBottom fontWeight={600}>
+                      Transcript Source
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-word' }}>
+                      {transcriptData.sourceUrl || 'External video'}
+                    </Typography>
+                  </Box>
+                )}
 
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Typography variant="h6" gutterBottom fontWeight={600}>
-                    Video Details
+                    Details
                   </Typography>
                   <Stack direction="row" spacing={1} flexWrap="wrap" gap={1}>
-                    <Chip label={`Video ID: ${transcriptData.videoId}`} size="small" />
+                    {transcriptData.videoId && (
+                      <Chip label={`Video ID: ${transcriptData.videoId}`} size="small" />
+                    )}
+                    {transcriptData.provider && (
+                      <Chip label={`Source: ${transcriptData.provider}`} size="small" />
+                    )}
                     {transcriptData.language && (
                       <Chip
                         label={`Language: ${transcriptData.language}`}
@@ -459,7 +573,7 @@ export default function HomePage() {
                     color="secondary"
                     startIcon={<CloudDownloadIcon />}
                     onClick={(e) => setQualityMenuAnchor(e.currentTarget)}
-                    disabled={loading}
+                    disabled={loading || transcriptData.provider !== 'youtube' || !transcriptData.videoId}
                   >
                     Download Video
                   </Button>
@@ -484,99 +598,247 @@ export default function HomePage() {
 
             {/* Transcript - Right Side */}
             <Grid item xs={12} lg={6}>
-              <Card
-                elevation={3}
-                sx={{
-                  height: { xs: 'auto', lg: '100%' },
-                  display: 'flex',
-                  flexDirection: 'column',
-                  maxHeight: { xs: '600px', lg: '100%' },
-                }}
-              >
-                <CardContent sx={{ pb: 1 }}>
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    flexWrap="wrap"
-                    gap={1}
-                  >
-                    <Typography variant="h6" fontWeight={600}>
-                      Transcript
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
-                      <IconButton
-                        onClick={copyToClipboard}
-                        size="small"
-                        color="primary"
-                        title="Copy to clipboard"
-                      >
-                        <CopyIcon />
-                      </IconButton>
-                      <IconButton
-                        onClick={downloadTranscript}
-                        size="small"
-                        color="primary"
-                        title="Download as text"
-                      >
-                        <DownloadIcon />
-                      </IconButton>
-                      <Button
-                        variant={showTimestamps ? 'contained' : 'outlined'}
-                        size="small"
-                        onClick={() => setShowTimestamps(!showTimestamps)}
-                        startIcon={<ScheduleIcon />}
-                      >
-                        Timestamps
-                      </Button>
-                    </Stack>
-                  </Stack>
-                </CardContent>
-
-                <Divider />
-
-                <CardContent
+              <Stack spacing={3}>
+                <Card
+                  elevation={3}
                   sx={{
-                    flexGrow: 1,
-                    overflow: 'auto',
-                    maxHeight: { xs: '400px', lg: 'calc(100vh - 400px)' },
-                    pb: 1,
+                    height: { xs: 'auto', lg: '100%' },
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxHeight: { xs: '600px', lg: '100%' },
                   }}
                 >
-                  {showTimestamps ? (
-                    // Display grouped by 10-second buckets
-                    <Stack spacing={2}>
-                      {groupSegmentsByInterval(transcriptData.segments, 10_000).map(
-                        (bucket, index) => (
-                          <Box key={index}>
-                            <Typography
-                              variant="caption"
-                              color="primary"
-                              fontWeight={600}
-                              display="block"
-                              gutterBottom
-                            >
-                              {formatTimestamp(bucket.startMs)}
-                            </Typography>
-                            <Typography variant="body2" color="text.primary">
-                              {bucket.text}
-                            </Typography>
-                          </Box>
-                        )
-                      )}
-                    </Stack>
-                  ) : (
-                    // Display as continuous long text
-                    <Typography
-                      variant="body2"
-                      color="text.primary"
-                      sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}
+                  <CardContent sx={{ pb: 1 }}>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      flexWrap="wrap"
+                      gap={1}
                     >
-                      {transcriptData.transcript}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
+                      <Typography variant="h6" fontWeight={600}>
+                        Transcript
+                      </Typography>
+                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                        <IconButton
+                          onClick={copyToClipboard}
+                          size="small"
+                          color="primary"
+                          title="Copy to clipboard"
+                        >
+                          <CopyIcon />
+                        </IconButton>
+                        <IconButton
+                          onClick={downloadTranscript}
+                          size="small"
+                          color="primary"
+                          title="Download as text"
+                        >
+                          <DownloadIcon />
+                        </IconButton>
+                        <Button
+                          variant={showTimestamps ? 'contained' : 'outlined'}
+                          size="small"
+                          onClick={() => setShowTimestamps(!showTimestamps)}
+                          startIcon={<ScheduleIcon />}
+                        >
+                          Timestamps
+                        </Button>
+                        <Button
+                          variant="contained"
+                          size="small"
+                          onClick={summarizeTranscript}
+                          startIcon={<AutoAwesomeIcon />}
+                          disabled={summaryLoading}
+                        >
+                          {summaryLoading ? 'Summarizing...' : 'Summarize'}
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </CardContent>
+
+                  <Divider />
+
+                  <CardContent
+                    sx={{
+                      flexGrow: 1,
+                      overflow: 'auto',
+                      maxHeight: { xs: '400px', lg: 'calc(100vh - 400px)' },
+                      pb: 1,
+                    }}
+                  >
+                    {showTimestamps ? (
+                      // Display grouped by 10-second buckets
+                      <Stack spacing={2}>
+                        {groupSegmentsByInterval(transcriptData.segments, 10_000).map(
+                          (bucket, index) => (
+                            <Box key={index}>
+                              <Typography
+                                variant="caption"
+                                color="primary"
+                                fontWeight={600}
+                                display="block"
+                                gutterBottom
+                              >
+                                {formatTimestamp(bucket.startMs)}
+                              </Typography>
+                              <Typography variant="body2" color="text.primary">
+                                {bucket.text}
+                              </Typography>
+                            </Box>
+                          )
+                        )}
+                      </Stack>
+                    ) : (
+                      // Display as continuous long text
+                      <Typography
+                        variant="body2"
+                        color="text.primary"
+                        sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}
+                      >
+                        {transcriptData.transcript}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {(summaryLoading || summary || summaryError) && (
+                  <Card elevation={3}>
+                    <CardContent>
+                      <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                        <Typography variant="h6" fontWeight={600}>
+                          Summary
+                        </Typography>
+                        {summaryLoading && <CircularProgress size={18} />}
+                        {summary && (
+                          <IconButton
+                            onClick={copySummaryToClipboard}
+                            size="small"
+                            color="primary"
+                            title="Copy summary"
+                          >
+                            <CopyIcon />
+                          </IconButton>
+                        )}
+                      </Stack>
+
+                      {summaryError && (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          {summaryError}
+                        </Alert>
+                      )}
+
+                      {!summaryLoading && summary && (
+                        <Stack spacing={2}>
+                          {summary.title && (
+                            <Typography variant="h5" fontWeight={700}>
+                              {summary.title}
+                            </Typography>
+                          )}
+                          {summary.overview && (
+                            <Typography
+                              variant="body2"
+                              color="text.primary"
+                              sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}
+                            >
+                              {summary.overview}
+                            </Typography>
+                          )}
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                              Sections
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {summary.sections.length ? (
+                                summary.sections.map((section, idx) => (
+                                  <Box key={idx} sx={{ mb: 1.5 }}>
+                                    {section.heading && (
+                                      <Typography variant="subtitle2" fontWeight={700}>
+                                        {section.heading}
+                                      </Typography>
+                                    )}
+                                    {section.content && (
+                                      <Typography variant="body2" sx={{ mb: 0.5 }}>
+                                        {section.content}
+                                      </Typography>
+                                    )}
+                                    {section.actions?.length ? (
+                                      <Stack spacing={0.25} sx={{ mb: 0.5 }}>
+                                        <Typography variant="caption" fontWeight={700}>
+                                          Actions
+                                        </Typography>
+                                        {section.actions.map((item, aIdx) => (
+                                          <Typography key={aIdx} variant="body2">
+                                            • {item}
+                                          </Typography>
+                                        ))}
+                                      </Stack>
+                                    ) : null}
+                                    {section.examples?.length ? (
+                                      <Stack spacing={0.25}>
+                                        <Typography variant="caption" fontWeight={700}>
+                                          Examples
+                                        </Typography>
+                                        {section.examples.map((item, eIdx) => (
+                                          <Typography key={eIdx} variant="body2">
+                                            • {item}
+                                          </Typography>
+                                        ))}
+                                      </Stack>
+                                    ) : null}
+                                  </Box>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No sections found.
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                              Key Takeaways
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {summary.keyTakeaways.length ? (
+                                summary.keyTakeaways.map((item, idx) => (
+                                  <Typography key={idx} variant="body2">
+                                    • {item}
+                                  </Typography>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No key takeaways found.
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight={700}>
+                              Action Plan
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              {summary.actionPlan.length ? (
+                                summary.actionPlan.map((item, idx) => (
+                                  <Typography key={idx} variant="body2">
+                                    • {item}
+                                  </Typography>
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No action plan found.
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Box>
+                        </Stack>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </Stack>
             </Grid>
           </Grid>
         )}

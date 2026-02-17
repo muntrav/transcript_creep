@@ -1,4 +1,7 @@
+import { validateYouTubeUrl } from './youtube'
+
 export type UrlValidation = { valid: boolean; error?: string }
+export type TranscriptSource = 'youtube' | 'instagram' | 'tiktok' | 'unknown'
 
 export function isHttpUrl(value: string): boolean {
   try {
@@ -39,4 +42,31 @@ export function validateShortsUrl(url: string): UrlValidation {
   }
 
   return { valid: false, error: 'Unsupported URL' }
+}
+
+export function getTranscriptSource(url: string): TranscriptSource {
+  if (!isHttpUrl(url)) return 'unknown'
+  const host = new URL(url).hostname.toLowerCase()
+
+  const isYouTube = /(^|\.)youtube\.com$/.test(host) || /(^|\.)youtu\.be$/.test(host)
+  const isInstagram = /(^|\.)instagram\.com$/.test(host)
+  const isTikTok = /(^|\.)tiktok\.com$/.test(host) || /(^|\.)vt\.tiktok\.com$/.test(host)
+
+  if (isYouTube) return 'youtube'
+  if (isInstagram) return 'instagram'
+  if (isTikTok) return 'tiktok'
+  return 'unknown'
+}
+
+export function validateTranscriptUrl(url: string): UrlValidation & { source?: TranscriptSource } {
+  const source = getTranscriptSource(url)
+  if (source === 'youtube') {
+    const v = validateYouTubeUrl(url)
+    return { ...v, source }
+  }
+  if (source === 'instagram' || source === 'tiktok') {
+    const v = validateShortsUrl(url)
+    return { ...v, source }
+  }
+  return { valid: false, error: 'Supported: YouTube, Instagram, TikTok', source: 'unknown' }
 }

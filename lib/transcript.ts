@@ -12,8 +12,10 @@ export type TranscriptSegment = {
 export type TranscriptResult = {
   transcript: string
   segments: TranscriptSegment[]
-  videoId: string
+  videoId?: string
   language?: string
+  sourceUrl?: string
+  provider?: string
 }
 
 export class TranscriptError extends Error {
