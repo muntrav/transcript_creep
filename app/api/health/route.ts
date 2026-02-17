@@ -1,6 +1,1 @@
-import { NextResponse } from 'next/server'
-import { getHealth } from '@/lib/health'
-
-export async function GET() {
-  return NextResponse.json(getHealth())
-}
+import { NextResponse } from 'next/server'\nimport { getHealth } from '@/lib/health'\n\nexport async function GET() {\n  return NextResponse.json(getHealth())\n}\n

@@ -1,6 +1,1 @@
-export function getHealth() {
-  return {
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-  }
-}
+export function getHealth() {\n  return {\n    status: 'healthy',\n    timestamp: new Date().toISOString(),\n  }\n}\n

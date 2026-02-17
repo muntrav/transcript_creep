@@ -1,10 +1,1 @@
-import { describe, it, expect } from 'vitest'
-import { getHealth } from '@/lib/health'
-
-describe('health helper', () => {
-  it('returns status healthy and timestamp', () => {
-    const h = getHealth()
-    expect(h.status).toBe('healthy')
-    expect(typeof h.timestamp).toBe('string')
-  })
-})
+import { describe, it, expect } from 'vitest'\nimport { getHealth } from '@/lib/health'\n\ndescribe('health helper', () => {\n  it('returns status healthy and timestamp', () => {\n    const h = getHealth()\n    expect(h.status).toBe('healthy')\n    expect(typeof h.timestamp).toBe('string')\n  })\n})\n
