@@ -263,13 +263,7 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
   }
 
   try {
-    console.log('[Transcript] Starting fetch for video ID:', videoId)
-    console.log('[Transcript] Environment:', {
-      nodeEnv: process.env.NODE_ENV,
-      vercel: process.env.VERCEL,
-      region: process.env.VERCEL_REGION,
-      hasRapidApiTranscriptKey: !!process.env.RAPIDAPI_TRANSCRIPT_KEY,
-    })
+    console.log('[Transcript] Starting fetch')
 
     // Primary: RapidAPI (works reliably on Vercel, avoids IP blocking)
     if (process.env.RAPIDAPI_TRANSCRIPT_KEY) {
@@ -277,10 +271,7 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
         console.log('[Transcript] Using RapidAPI as primary method...')
         return await getTranscriptViaRapidAPI(videoId)
       } catch (rapidApiError: any) {
-        console.error('[Transcript] RapidAPI failed:', {
-          message: rapidApiError?.message,
-          code: rapidApiError?.code,
-        })
+        console.error('[Transcript] RapidAPI failed', { code: rapidApiError?.code })
         // If it's a definitive NO_TRANSCRIPT error, don't try fallbacks
         if (rapidApiError instanceof TranscriptError && rapidApiError.code === 'NO_TRANSCRIPT') {
           throw rapidApiError
@@ -300,10 +291,7 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
       )
       console.log('[Transcript] Library fetch successful, items:', libItems?.length || 0)
     } catch (fetchError: any) {
-      console.error('[Transcript] Library fetch failed:', {
-        message: fetchError?.message,
-        name: fetchError?.name,
-      })
+      console.error('[Transcript] Library fetch failed')
       console.log('[Transcript] Enabling timedtext fallback...')
     }
 
@@ -352,7 +340,7 @@ export async function getTranscript(url: string): Promise<TranscriptResult> {
       language,
     }
   } catch (error: any) {
-    console.error('Transcript fetch error:', error)
+    console.error('Transcript fetch error')
 
     if (error instanceof TranscriptError) {
       throw error

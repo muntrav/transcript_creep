@@ -1,31 +1,39 @@
 import { NextResponse } from 'next/server'
 import { fetchShortsInfo, buildContentDisposition } from '@/lib/shorts'
+import { validateShortsUrl } from '@/lib/urls'
+import { assertSafeOutboundMediaUrl } from '@/lib/outbound'
+import {
+  enforceContentLength,
+  enforceRateLimit,
+  enforceSameOrigin,
+  logError,
+  logInfo,
+} from '@/lib/security'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-async function handleAudio(url: string) {
-  console.log('[Shorts] /audio request for', url)
-  const info = await fetchShortsInfo(url)
-  console.log('[Shorts] /audio resolved videoUrl', info.videoUrl?.slice(0, 80))
+const MAX_BODY_BYTES = 2048
 
-  // Lazy-load ffmpeg and set binary path
+async function handleAudio(url: string) {
+  logInfo('[Shorts] /audio request', { host: new URL(url).hostname })
+  const info = await fetchShortsInfo(url)
+  const mediaUrl = await assertSafeOutboundMediaUrl(info.videoUrl)
+
   const ffmpeg = (await import('fluent-ffmpeg')).default
   const ffmpegPath = (await import('ffmpeg-static')).default as string
   if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath)
 
-  // Build ffmpeg pipeline: input remote video URL -> mp3 (node readable)
-  const nodeReadable = ffmpeg(info.videoUrl)
+  const nodeReadable = ffmpeg(mediaUrl.toString())
     .format('mp3')
     .audioCodec('libmp3lame')
     .audioBitrate('192k')
-    .on('error', (err: any) => {
-      console.error('[Shorts] ffmpeg error', err)
+    .on('error', () => {
+      logError('[Shorts] ffmpeg error')
     })
     .pipe({ end: true })
 
-  // Convert Node stream -> Web ReadableStream (preferred) or manual bridge
   let webStream: any
   try {
     const streamMod: any = await import('stream')
@@ -48,34 +56,41 @@ async function handleAudio(url: string) {
   const headers = new Headers()
   headers.set('Content-Type', 'audio/mpeg')
   headers.set('Content-Disposition', buildContentDisposition(info.title || 'shorts', '.mp3'))
+  headers.set('Cache-Control', 'no-store')
   return new Response(webStream as any, { headers })
 }
 
 export async function POST(request: Request) {
+  const sameOrigin = enforceSameOrigin(request)
+  if (sameOrigin) return sameOrigin
+
+  const rateLimited = enforceRateLimit(request, {
+    scope: 'shorts-audio',
+    limit: 4,
+    windowMs: 60_000,
+  })
+  if (rateLimited) return rateLimited
+
+  const contentLength = enforceContentLength(request, MAX_BODY_BYTES)
+  if (contentLength) return contentLength
+
   try {
     const { url } = await request.json()
     if (!url || typeof url !== 'string') {
       return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })
     }
-    return await handleAudio(url)
-  } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message || 'Audio extraction failed' },
-      { status: 500 }
-    )
-  }
-}
 
-export async function GET(request: Request) {
-  try {
-    const u = new URL(request.url)
-    const url = u.searchParams.get('url') || ''
-    if (!url) return NextResponse.json({ success: false, error: 'Missing url' }, { status: 400 })
+    const validation = validateShortsUrl(url)
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.error || 'Invalid Shorts URL' },
+        { status: 400 }
+      )
+    }
+
     return await handleAudio(url)
   } catch (err: any) {
-    return NextResponse.json(
-      { success: false, error: err?.message || 'Audio extraction failed' },
-      { status: 500 }
-    )
+    logError('[Shorts] /audio error')
+    return NextResponse.json({ success: false, error: 'Audio extraction failed.' }, { status: 500 })
   }
 }

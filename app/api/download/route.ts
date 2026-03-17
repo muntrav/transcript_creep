@@ -1,14 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { extractVideoId } from '@/lib/youtube'
+import {
+  enforceContentLength,
+  enforceRateLimit,
+  enforceSameOrigin,
+  logError,
+  logInfo,
+} from '@/lib/security'
 
-// Force Node.js runtime
 export const runtime = 'nodejs'
 
-/**
- * API endpoint to get YouTube video download links
- * Uses YTStream API from RapidAPI
- */
+const MAX_BODY_BYTES = 2048
+
 export async function POST(request: NextRequest) {
+  const sameOrigin = enforceSameOrigin(request)
+  if (sameOrigin) return sameOrigin
+
+  const rateLimited = enforceRateLimit(request, {
+    scope: 'download-link',
+    limit: 8,
+    windowMs: 60_000,
+  })
+  if (rateLimited) return rateLimited
+
+  const contentLength = enforceContentLength(request, MAX_BODY_BYTES)
+  if (contentLength) return contentLength
+
   try {
     const body = await request.json()
     const { videoUrl, quality } = body
@@ -23,68 +40,49 @@ export async function POST(request: NextRequest) {
     }
 
     const rapidApiKey = process.env.RAPIDAPI_KEY
-
     if (!rapidApiKey) {
-      console.error('RAPIDAPI_KEY not configured')
+      logError('[Download] RAPIDAPI_KEY not configured')
       return NextResponse.json(
         {
           success: false,
-          error: 'API key not configured. Please add RAPIDAPI_KEY to your .env.local file',
+          error: 'Download service is unavailable.',
         },
-        { status: 500 }
+        { status: 503 }
       )
     }
 
-    // Call YTStream API
-    const apiUrl = `https://ytstream-download-youtube-videos.p.rapidapi.com/dl`
-    const params = new URLSearchParams({
-      id: videoId,
-      geo: 'US', // Can be adjusted based on user location
-    })
+    const apiUrl = 'https://ytstream-download-youtube-videos.p.rapidapi.com/dl'
+    const params = new URLSearchParams({ id: videoId, geo: 'US' })
+    if (quality) params.append('quality', quality)
 
-    // Add quality parameter if specified
-    if (quality) {
-      params.append('quality', quality)
-    }
-
-    console.log('Fetching download link for video:', videoId, 'quality:', quality || 'auto')
-
+    logInfo('[Download] Resolving link', { quality: quality || 'auto' })
     const response = await fetch(`${apiUrl}?${params.toString()}`, {
       method: 'GET',
       headers: {
         'X-RapidAPI-Key': rapidApiKey,
         'X-RapidAPI-Host': 'ytstream-download-youtube-videos.p.rapidapi.com',
       },
+      cache: 'no-store',
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error('YTStream API error:', response.status, errorText)
-
+      logError('[Download] Upstream request failed', { status: response.status })
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to fetch download link',
-          details: response.status === 429 ? 'Rate limit exceeded' : errorText,
+          error:
+            response.status === 429
+              ? 'Download provider is rate limited.'
+              : 'Failed to fetch download link.',
         },
-        { status: response.status }
+        { status: response.status === 429 ? 429 : 502 }
       )
     }
 
     const data = await response.json()
-
-    console.log('YTStream API response keys:', Object.keys(data))
-    console.log('Formats count:', data.formats?.length || 0)
-    console.log('Adaptive formats count:', data.adaptiveFormats?.length || 0)
-
-    // The YTStream API returns formats in the "formats" or "adaptiveFormats" array
-    // Each format has a "url" field with the direct download link
-
-    // Find the best format based on quality preference
     let selectedFormat = null
 
     if (quality) {
-      // Try to find format matching requested quality
       const qualityMap: Record<string, string[]> = {
         '360': ['360p', 'medium'],
         '720': ['720p', 'hd720'],
@@ -92,33 +90,25 @@ export async function POST(request: NextRequest) {
       }
 
       const qualityLabels = qualityMap[quality] || []
-
-      // IMPORTANT: Use formats (combined video+audio) instead of adaptiveFormats (video-only)
-      // adaptiveFormats contain video-only streams without audio
       selectedFormat = data.formats?.find((f: any) =>
         qualityLabels.some((ql) => f.qualityLabel?.toLowerCase().includes(ql.toLowerCase()))
       )
     }
 
-    // If no quality specified or not found, use the first available combined format
-    // Always prefer formats (video+audio) over adaptiveFormats (video-only or audio-only)
     if (!selectedFormat) {
       selectedFormat = data.formats?.[0]
     }
 
     if (!selectedFormat || !selectedFormat.url) {
-      console.error('No download URL found in formats')
+      logError('[Download] No combined format available')
       return NextResponse.json(
         {
           success: false,
-          error: 'No download link available for this video',
-          availableFormats: data.formats?.map((f: any) => f.qualityLabel) || [],
+          error: 'No download link available for this video.',
         },
-        { status: 500 }
+        { status: 502 }
       )
     }
-
-    console.log('Selected format:', selectedFormat.qualityLabel, 'itag:', selectedFormat.itag)
 
     return NextResponse.json({
       success: true,
@@ -134,12 +124,11 @@ export async function POST(request: NextRequest) {
       },
     })
   } catch (error: any) {
-    console.error('Download API error:', error)
-
+    logError('[Download] Unexpected error')
     return NextResponse.json(
       {
         success: false,
-        error: error.message || 'Failed to process download request',
+        error: 'Failed to process download request.',
       },
       { status: 500 }
     )

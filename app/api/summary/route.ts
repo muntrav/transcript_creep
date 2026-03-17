@@ -1,4 +1,11 @@
 import { NextResponse } from 'next/server'
+import {
+  enforceContentLength,
+  enforceRateLimit,
+  enforceSameOrigin,
+  logError,
+  logInfo,
+} from '@/lib/security'
 
 export const runtime = 'nodejs'
 
@@ -8,6 +15,7 @@ type SummaryRequest = {
 }
 
 const MAX_TRANSCRIPT_CHARS = 10000
+const MAX_BODY_BYTES = 16_384
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504])
 
 function coerceStringArray(input: any): string[] {
@@ -53,8 +61,20 @@ function parseSummaryJson(raw: string) {
 }
 
 export async function POST(request: Request) {
+  const sameOrigin = enforceSameOrigin(request)
+  if (sameOrigin) return sameOrigin
+
+  const rateLimited = enforceRateLimit(request, {
+    scope: 'summary',
+    limit: 5,
+    windowMs: 60_000,
+  })
+  if (rateLimited) return rateLimited
+
+  const contentLength = enforceContentLength(request, MAX_BODY_BYTES)
+  if (contentLength) return contentLength
+
   try {
-    console.log('[Summary] Request received')
     const body: SummaryRequest = await request.json()
     const transcript = (body.transcript || '').trim()
     if (!transcript) {
@@ -67,8 +87,8 @@ export async function POST(request: Request) {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: 'OPENROUTER_API_KEY not configured' },
-        { status: 500 }
+        { success: false, error: 'Summary service is unavailable.' },
+        { status: 503 }
       )
     }
 
@@ -134,8 +154,9 @@ export async function POST(request: Request) {
       'https://transcript-creep.vercel.app'
 
     let res: Response | null = null
-    let errText = ''
-    console.log('[OpenRouter] Trying models', modelCandidates)
+    let lastStatus = 500
+    logInfo('[Summary] Request received', { transcriptLength: transcript.length })
+
     for (const model of modelCandidates) {
       const payload = { ...basePayload, model }
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -156,21 +177,19 @@ export async function POST(request: Request) {
           })
         } catch (err: any) {
           clearTimeout(timeoutId)
-          errText = err?.message || String(err)
-          console.error('[OpenRouter] Fetch error', { model, attempt, err: errText })
+          logError('[Summary] Provider fetch failed', { model, attempt })
+          res = null
           break
         }
         clearTimeout(timeoutId)
 
         if (res.ok) break
 
-        errText = await res.text().catch(() => '')
-        console.error('[OpenRouter] Response error', {
+        lastStatus = res.status
+        logError('[Summary] Provider responded with error', {
           model,
           attempt,
           status: res.status,
-          statusText: res.statusText,
-          snippet: errText?.slice(0, 500),
         })
         if (!RETRYABLE_STATUS.has(res.status)) break
 
@@ -182,27 +201,18 @@ export async function POST(request: Request) {
     }
 
     if (!res || !res.ok) {
-      const status = res?.status || 500
-      const statusText = res?.statusText || 'Unknown error'
+      const status = res?.status || lastStatus || 500
       const hint =
-        status === 502
-          ? 'OpenRouter free pool is busy. Please try again in a moment.'
+        status === 429 || status === 502
+          ? 'Summary provider is busy. Please try again in a moment.'
           : undefined
-      const errorSnippet = errText?.slice(0, 1000)
-      console.error('[OpenRouter] Error response', {
-        status,
-        statusText,
-        modelTried: modelCandidates,
-        snippet: errorSnippet,
-      })
       return NextResponse.json(
         {
           success: false,
-          error: `OpenRouter error: ${status} ${statusText}`,
-          details: errorSnippet,
+          error: 'Summary provider request failed.',
           hint,
         },
-        { status }
+        { status: status === 429 ? 429 : 502 }
       )
     }
 
@@ -211,8 +221,8 @@ export async function POST(request: Request) {
     const parsed = parseSummaryJson(content)
     if (!parsed) {
       return NextResponse.json(
-        { success: false, error: 'Failed to parse summary JSON' },
-        { status: 500 }
+        { success: false, error: 'Failed to parse summary response.' },
+        { status: 502 }
       )
     }
 
@@ -236,9 +246,7 @@ export async function POST(request: Request) {
       },
     })
   } catch (error: any) {
-    return NextResponse.json(
-      { success: false, error: error?.message || 'Summary failed' },
-      { status: 500 }
-    )
+    logError('[Summary] Unexpected error')
+    return NextResponse.json({ success: false, error: 'Summary failed.' }, { status: 500 })
   }
 }

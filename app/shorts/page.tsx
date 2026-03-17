@@ -105,6 +105,18 @@ export default function ShortsPage() {
     }
   }
 
+  function getFilenameFromDisposition(header: string | null, fallback: string) {
+    if (!header) return fallback
+    const utf8Match = header.match(/filename\*=UTF-8''([^;]+)/i)
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1])
+      } catch {}
+    }
+    const basicMatch = header.match(/filename="?([^";]+)"?/i)
+    return basicMatch?.[1] || fallback
+  }
+
   async function download() {
     if (!url) return
     try {
@@ -115,14 +127,34 @@ export default function ShortsPage() {
       if (meta) setInfo(meta)
       setIsDownloading(true)
       const endpoint = mode === 'audio' ? '/api/shorts/audio' : '/api/shorts/download'
-      // Use GET with query param to let browser handle streaming download
+      const fallbackName = mode === 'audio' ? 'shorts.mp3' : 'shorts.mp4'
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!res.ok) {
+        let message = 'Download failed'
+        try {
+          const body = await res.json()
+          message = body?.error || message
+        } catch {}
+        throw new Error(message)
+      }
+
+      const blob = await res.blob()
+      const downloadUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = `${endpoint}?url=${encodeURIComponent(url)}`
-      link.target = '_blank'
-      link.rel = 'noopener'
+      link.href = downloadUrl
+      link.download = getFilenameFromDisposition(
+        res.headers.get('content-disposition'),
+        fallbackName
+      )
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
+      URL.revokeObjectURL(downloadUrl)
       showToast('Download started!')
     } catch (e: any) {
       showToast(e.message || 'Download failed', 'error')
