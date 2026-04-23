@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server'
 import { validateTranscriptUrl } from '@/lib/urls'
 import { getTranscript, TranscriptError } from '@/lib/transcript'
 import { getTranscriptViaSupadata } from '@/lib/transcript-supadata'
+import { consumeCredits } from '@/lib/billing'
+import { requireRequestUser } from '@/lib/request-auth'
 
 // Force this route to use Node.js runtime instead of Edge
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 // Prefer a US region to avoid EU consent interstitials
 export const preferredRegion = ['iad1']
 
@@ -14,6 +17,9 @@ type TranscriptRequest = {
 
 export async function POST(request: Request) {
   try {
+    const authResult = await requireRequestUser()
+    if (!authResult.user) return authResult.response
+
     const body: TranscriptRequest = await request.json()
     const url = body.videoUrl ?? ''
 
@@ -25,6 +31,25 @@ export async function POST(request: Request) {
           error: validation.error,
         },
         { status: 400 }
+      )
+    }
+
+    const creditResult = await consumeCredits({
+      userId: authResult.user.id,
+      units: 1,
+      kind: 'single',
+      metadata: { sourceUrl: url },
+    })
+
+    if (!creditResult?.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Monthly transcript limit reached. Visit pricing to request a paid plan.',
+          code: 'QUOTA_EXCEEDED',
+          data: creditResult,
+        },
+        { status: 402 }
       )
     }
 

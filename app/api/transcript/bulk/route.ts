@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { parseBulkUrls, MAX_BULK_ITEMS } from '@/lib/bulk-input'
+import { consumeCredits } from '@/lib/billing'
 import { makeTranscriptFileName } from '@/lib/file-names'
+import { requireRequestUser } from '@/lib/request-auth'
 import { getTranscript } from '@/lib/transcript'
 import { resolvePlaylistItems } from '@/lib/youtube-playlist'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 export const preferredRegion = ['iad1']
 
 type BulkTranscriptRequest = {
@@ -45,6 +48,9 @@ async function mapWithConcurrency<T, R>(
 
 export async function POST(request: Request) {
   try {
+    const authResult = await requireRequestUser()
+    if (!authResult.user) return authResult.response
+
     const body: BulkTranscriptRequest = await request.json()
     const urlsText = body.urlsText?.trim() || ''
     const playlistUrl = body.playlistUrl?.trim() || ''
@@ -115,6 +121,29 @@ export async function POST(request: Request) {
       }
 
       inputs = parsed.urls.map((sourceUrl) => ({ sourceUrl }))
+    }
+
+    const creditResult = await consumeCredits({
+      userId: authResult.user.id,
+      units: inputs.length,
+      kind: 'bulk',
+      metadata: {
+        requestType: playlistUrl ? 'playlist' : 'urls',
+        requestedItems: inputs.length,
+      },
+    })
+
+    if (!creditResult?.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Monthly transcript limit reached for this bulk request. Visit pricing to request a paid plan.',
+          code: 'QUOTA_EXCEEDED',
+          data: creditResult,
+        },
+        { status: 402 }
+      )
     }
 
     const items = await mapWithConcurrency(inputs, 3, async (input, index) => {

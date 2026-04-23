@@ -36,6 +36,7 @@ import {
   AutoAwesome as AutoAwesomeIcon,
 } from '@mui/icons-material'
 import ThemeToggle from '@/components/ThemeToggle'
+import AuthActions from '@/components/AuthActions'
 import PageSwitcher from '@/components/PageSwitcher'
 import { groupSegmentsByInterval } from '@/lib/segment-group'
 import { validateTranscriptUrl } from '@/lib/urls'
@@ -464,12 +465,15 @@ export default function HomePage() {
               display: 'flex',
               alignItems: 'center',
               gap: { xs: 1.5, md: 2 },
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end',
               ml: { xs: 0, sm: 4 },
-              maxWidth: { xs: '60%', md: 'unset' },
+              maxWidth: { xs: '72%', md: 'unset' },
             }}
           >
             <PageSwitcher />
             <ThemeToggle />
+            <AuthActions />
           </Box>
         </Toolbar>
       </AppBar>

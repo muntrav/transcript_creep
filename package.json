@@ -18,6 +18,8 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^6.5.0",
     "@mui/material": "^6.5.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.104.1",
     "jszip": "^3.10.1",
     "next": "14.0.0",
     "node-fetch": "^3.3.0",
