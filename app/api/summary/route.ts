@@ -185,9 +185,7 @@ export async function POST(request: Request) {
       const status = res?.status || 500
       const statusText = res?.statusText || 'Unknown error'
       const hint =
-        status === 502
-          ? 'OpenRouter free pool is busy. Please try again in a moment.'
-          : undefined
+        status === 502 ? 'OpenRouter free pool is busy. Please try again in a moment.' : undefined
       const errorSnippet = errText?.slice(0, 1000)
       console.error('[OpenRouter] Error response', {
         status,
