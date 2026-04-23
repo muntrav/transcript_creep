@@ -24,6 +24,8 @@ import {
   Toolbar,
   Paper,
   CircularProgress,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material'
 import {
   Send as SendIcon,
@@ -71,7 +73,28 @@ type SummaryData = {
   actionPlan: string[]
 }
 
+type BulkTranscriptItem = {
+  sourceUrl: string
+  videoId?: string
+  title?: string
+  language?: string
+  transcript?: string
+  fileName?: string
+  success: boolean
+  error?: string
+}
+
+type BulkTranscriptData = {
+  items: BulkTranscriptItem[]
+  stats: {
+    requested: number
+    succeeded: number
+    failed: number
+  }
+}
+
 export default function HomePage() {
+  const [mode, setMode] = useState<'single' | 'bulk'>('single')
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,6 +105,11 @@ export default function HomePage() {
   const [summary, setSummary] = useState<SummaryData | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [bulkUrlsText, setBulkUrlsText] = useState('')
+  const [playlistUrl, setPlaylistUrl] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const [bulkResult, setBulkResult] = useState<BulkTranscriptData | null>(null)
 
   const urlValidation = useMemo(() => (url ? validateTranscriptUrl(url) : { valid: false }), [url])
   const isUrlValid = urlValidation.valid
@@ -159,6 +187,51 @@ export default function HomePage() {
     }
   }
 
+  async function handleBulkSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setBulkError(null)
+    setBulkResult(null)
+    setBulkLoading(true)
+
+    try {
+      const trimmedUrls = bulkUrlsText.trim()
+      const trimmedPlaylist = playlistUrl.trim()
+
+      if (!trimmedUrls && !trimmedPlaylist) {
+        throw new Error('Paste YouTube links or enter one playlist URL')
+      }
+
+      if (trimmedUrls && trimmedPlaylist) {
+        throw new Error('Use either pasted URLs or a playlist URL, not both')
+      }
+
+      const res = await fetch('/api/transcript/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          urlsText: trimmedUrls,
+          playlistUrl: trimmedPlaylist,
+        }),
+      })
+
+      const body = await res.json()
+
+      if (!res.ok) {
+        throw new Error(body?.error || 'Failed to fetch bulk transcripts')
+      }
+
+      setBulkResult(body.data)
+      showToast(
+        `Bulk run complete: ${body.data.stats.succeeded} succeeded, ${body.data.stats.failed} failed`,
+        body.data.stats.failed ? 'info' : 'success'
+      )
+    } catch (err: any) {
+      setBulkError(err.message || 'Failed to fetch bulk transcripts')
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const copyToClipboard = () => {
     if (!currentTranscriptText) return
     navigator.clipboard.writeText(currentTranscriptText)
@@ -178,6 +251,61 @@ export default function HomePage() {
     document.body.removeChild(a)
     URL.revokeObjectURL(downloadUrl)
     showToast('Transcript downloaded!')
+  }
+
+  const downloadBulkZip = async () => {
+    if (!bulkResult) return
+
+    const { default: JSZip } = await import('jszip')
+    const zip = new JSZip()
+    const successfulItems = bulkResult.items.filter((item) => item.success && item.transcript)
+    const failedItems = bulkResult.items.filter((item) => !item.success)
+
+    successfulItems.forEach((item, index) => {
+      zip.file(
+        item.fileName || `transcript-${String(index + 1).padStart(2, '0')}.txt`,
+        item.transcript || ''
+      )
+    })
+
+    if (failedItems.length) {
+      const errorReport = failedItems
+        .map((item, index) => `${index + 1}. ${item.sourceUrl}\n${item.error || 'Unknown error'}`)
+        .join('\n\n')
+      zip.file('_errors.txt', errorReport)
+    }
+
+    zip.file(
+      'manifest.json',
+      JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          stats: bulkResult.stats,
+          items: bulkResult.items.map((item) => ({
+            sourceUrl: item.sourceUrl,
+            videoId: item.videoId,
+            title: item.title,
+            language: item.language,
+            fileName: item.fileName,
+            success: item.success,
+            error: item.error,
+          })),
+        },
+        null,
+        2
+      )
+    )
+
+    const blob = await zip.generateAsync({ type: 'blob' })
+    const downloadUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = downloadUrl
+    a.download = 'transcript-creep-bulk-export.zip'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(downloadUrl)
+    showToast('Bulk transcript ZIP downloaded!')
   }
 
   const formatSummaryText = (data: SummaryData) => {
@@ -377,40 +505,100 @@ export default function HomePage() {
             overflow: 'hidden',
           }}
         >
-          <form onSubmit={handleSubmit}>
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={{ xs: 2, md: 2.5 }}
-              alignItems={{ xs: 'stretch', md: 'center' }}
-            >
-              <TextField
-                fullWidth
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="Enter YouTube / TikTok / Instagram URL..."
-                variant="outlined"
-                disabled={loading}
-                error={Boolean(url) && !isUrlValid}
-                helperText={Boolean(url) && !isUrlValid ? urlValidation.error : ' '}
-                sx={{ flexGrow: 1 }}
-              />
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                disabled={loading || (url.length > 0 && !isUrlValid)}
-                endIcon={<SendIcon />}
-                sx={{
-                  minWidth: { xs: '100%', md: 200 },
-                  width: { xs: '100%', md: 'auto' },
-                  alignSelf: { xs: 'stretch', md: 'center' },
-                  py: { xs: 1.5, md: 1.2 },
+          <Stack spacing={3}>
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <ToggleButtonGroup
+                value={mode}
+                exclusive
+                onChange={(_event, value) => {
+                  if (value) setMode(value)
                 }}
+                color="primary"
+                size="small"
               >
-                {loading ? 'Loading...' : 'Get Transcript'}
-              </Button>
-            </Stack>
-          </form>
+                <ToggleButton value="single">Single Video</ToggleButton>
+                <ToggleButton value="bulk">Bulk Export</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+
+            {mode === 'single' ? (
+              <form onSubmit={handleSubmit}>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={{ xs: 2, md: 2.5 }}
+                  alignItems={{ xs: 'stretch', md: 'center' }}
+                >
+                  <TextField
+                    fullWidth
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="Enter YouTube / TikTok / Instagram URL..."
+                    variant="outlined"
+                    disabled={loading}
+                    error={Boolean(url) && !isUrlValid}
+                    helperText={Boolean(url) && !isUrlValid ? urlValidation.error : ' '}
+                    sx={{ flexGrow: 1 }}
+                  />
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={loading || (url.length > 0 && !isUrlValid)}
+                    endIcon={<SendIcon />}
+                    sx={{
+                      minWidth: { xs: '100%', md: 200 },
+                      width: { xs: '100%', md: 'auto' },
+                      alignSelf: { xs: 'stretch', md: 'center' },
+                      py: { xs: 1.5, md: 1.2 },
+                    }}
+                  >
+                    {loading ? 'Loading...' : 'Get Transcript'}
+                  </Button>
+                </Stack>
+              </form>
+            ) : (
+              <form onSubmit={handleBulkSubmit}>
+                <Stack spacing={2.5}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    minRows={8}
+                    value={bulkUrlsText}
+                    onChange={(e) => setBulkUrlsText(e.target.value)}
+                    placeholder={
+                      'Paste one YouTube video URL per line\nhttps://www.youtube.com/watch?v=...\nhttps://youtu.be/...'
+                    }
+                    variant="outlined"
+                    disabled={bulkLoading}
+                    helperText="Paste multiple YouTube video links separated by new lines."
+                  />
+                  <TextField
+                    fullWidth
+                    value={playlistUrl}
+                    onChange={(e) => setPlaylistUrl(e.target.value)}
+                    placeholder="Or enter one YouTube playlist URL"
+                    variant="outlined"
+                    disabled={bulkLoading}
+                    helperText="Use either pasted URLs or one playlist URL. Current limit: 50 videos per run."
+                  />
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    size="large"
+                    disabled={bulkLoading}
+                    endIcon={<CloudDownloadIcon />}
+                    sx={{
+                      width: { xs: '100%', md: 'auto' },
+                      alignSelf: { xs: 'stretch', md: 'flex-start' },
+                      py: { xs: 1.5, md: 1.2 },
+                    }}
+                  >
+                    {bulkLoading ? 'Extracting...' : 'Extract Bulk Transcripts'}
+                  </Button>
+                </Stack>
+              </form>
+            )}
+          </Stack>
         </Paper>
 
         {/* Feature Badges */}
@@ -481,14 +669,20 @@ export default function HomePage() {
         </Box>
 
         {/* Error Alert */}
-        {error && (
+        {mode === 'single' && error && (
           <Alert severity="error" onClose={() => setError(null)} sx={{ mb: 4 }}>
             {error}
           </Alert>
         )}
 
+        {mode === 'bulk' && bulkError && (
+          <Alert severity="error" onClose={() => setBulkError(null)} sx={{ mb: 4 }}>
+            {bulkError}
+          </Alert>
+        )}
+
         {/* Results Section */}
-        {transcriptData && (
+        {mode === 'single' && transcriptData && (
           <Grid container spacing={3}>
             {/* Video / Source Details - Left Side */}
             <Grid item xs={12} lg={6}>
@@ -844,6 +1038,91 @@ export default function HomePage() {
               </Stack>
             </Grid>
           </Grid>
+        )}
+
+        {mode === 'bulk' && bulkResult && (
+          <Box sx={{ maxWidth: 1100, mx: 'auto' }}>
+            <Card elevation={3}>
+              <CardContent>
+                <Stack
+                  direction={{ xs: 'column', md: 'row' }}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', md: 'center' }}
+                  spacing={2}
+                  sx={{ mb: 3 }}
+                >
+                  <Box>
+                    <Typography variant="h6" fontWeight={700}>
+                      Bulk transcript export
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {bulkResult.stats.succeeded} succeeded, {bulkResult.stats.failed} failed,{' '}
+                      {bulkResult.stats.requested} total.
+                    </Typography>
+                  </Box>
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadIcon />}
+                    onClick={downloadBulkZip}
+                    disabled={!bulkResult.items.some((item) => item.success && item.transcript)}
+                  >
+                    Download ZIP
+                  </Button>
+                </Stack>
+
+                <Stack direction="row" spacing={1} flexWrap="wrap" gap={1} sx={{ mb: 3 }}>
+                  <Chip label={`Requested: ${bulkResult.stats.requested}`} />
+                  <Chip label={`Succeeded: ${bulkResult.stats.succeeded}`} color="success" />
+                  <Chip label={`Failed: ${bulkResult.stats.failed}`} color="error" />
+                </Stack>
+
+                <Stack spacing={2}>
+                  {bulkResult.items.map((item, index) => (
+                    <Paper
+                      key={`${item.sourceUrl}-${index}`}
+                      variant="outlined"
+                      sx={{ p: 2, borderRadius: 3 }}
+                    >
+                      <Stack spacing={1}>
+                        <Stack
+                          direction={{ xs: 'column', md: 'row' }}
+                          justifyContent="space-between"
+                          alignItems={{ xs: 'flex-start', md: 'center' }}
+                          spacing={1}
+                        >
+                          <Typography fontWeight={700}>
+                            {item.title || item.videoId || `Video ${index + 1}`}
+                          </Typography>
+                          <Chip
+                            label={item.success ? 'Success' : 'Failed'}
+                            color={item.success ? 'success' : 'error'}
+                            size="small"
+                          />
+                        </Stack>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ wordBreak: 'break-word' }}
+                        >
+                          {item.sourceUrl}
+                        </Typography>
+                        {item.fileName && item.success && (
+                          <Typography variant="caption" color="text.secondary">
+                            ZIP file: {item.fileName}
+                          </Typography>
+                        )}
+                        {!item.success && item.error && (
+                          <Alert severity="error" sx={{ mt: 1 }}>
+                            {item.error}
+                          </Alert>
+                        )}
+                      </Stack>
+                    </Paper>
+                  ))}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Box>
         )}
       </Container>
 
