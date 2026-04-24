@@ -75,6 +75,7 @@ export type AdminDashboardData = {
 export type ManualPaymentConfig = {
   destinationLabel: string
   destinationValue: string
+  maskedDestinationValue: string
   contactChannel: string | null
   contactValue: string | null
   notes: string[]

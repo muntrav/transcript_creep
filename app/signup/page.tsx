@@ -31,10 +31,12 @@ export default function SignupPage() {
     setSuccessMessage(null)
 
     try {
+      const emailRedirectTo = `${window.location.origin}/auth/callback`
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
+          emailRedirectTo,
           data: {
             display_name: displayName,
           },
@@ -44,12 +46,12 @@ export default function SignupPage() {
       if (error) throw error
 
       if (data.session) {
-        window.location.assign('/account')
+        window.location.assign('/auth/post-login')
         return
       }
 
       setSuccessMessage(
-        'Account created. Check your email if confirmation is required, then log in.'
+        'Account created. Check your email to confirm the account, then continue from the link in that email.'
       )
     } catch (error: any) {
       setErrorMessage(error?.message || 'Failed to create account.')

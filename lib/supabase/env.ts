@@ -40,12 +40,30 @@ function splitLines(value?: string | null) {
     .filter(Boolean)
 }
 
+function maskSensitiveValue(value: string) {
+  const compact = value.replace(/\s+/g, '')
+  const digitsOnly = compact.replace(/\D/g, '')
+
+  if (digitsOnly.length >= 12) {
+    return `•••• •••• •••• ${digitsOnly.slice(-4)}`
+  }
+
+  if (compact.length > 8) {
+    return `${compact.slice(0, 2)}••••${compact.slice(-4)}`
+  }
+
+  return compact
+}
+
 export function getManualPaymentConfig() {
+  const destinationValue =
+    process.env.MANUAL_PAYMENT_DESTINATION_VALUE?.trim() ||
+    'Configure MANUAL_PAYMENT_DESTINATION_VALUE'
+
   return {
     destinationLabel: process.env.MANUAL_PAYMENT_DESTINATION_LABEL?.trim() || 'Payment destination',
-    destinationValue:
-      process.env.MANUAL_PAYMENT_DESTINATION_VALUE?.trim() ||
-      'Configure MANUAL_PAYMENT_DESTINATION_VALUE',
+    destinationValue,
+    maskedDestinationValue: maskSensitiveValue(destinationValue),
     contactChannel: process.env.MANUAL_PAYMENT_CONTACT_CHANNEL?.trim() || null,
     contactValue: process.env.MANUAL_PAYMENT_CONTACT_VALUE?.trim() || null,
     notes: splitLines(process.env.MANUAL_PAYMENT_NOTES),

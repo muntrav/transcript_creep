@@ -4,6 +4,7 @@ import { consumeCredits } from '@/lib/billing'
 import { makeTranscriptFileName } from '@/lib/file-names'
 import { requireRequestUser } from '@/lib/request-auth'
 import { getTranscript } from '@/lib/transcript'
+import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
 import { resolvePlaylistItems } from '@/lib/youtube-playlist'
 
 export const runtime = 'nodejs'
@@ -169,7 +170,7 @@ export async function POST(request: Request) {
           videoId: input.videoId,
           title: input.title,
           success: false,
-          error: error?.message || 'Failed to fetch transcript',
+          error: toFriendlyErrorMessage(error?.message, error?.code),
         } satisfies BulkTranscriptItem
       }
     })
@@ -193,7 +194,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: error?.message || 'Failed to process bulk transcript request',
+        error: toFriendlyErrorMessage(error?.message),
       },
       { status: 500 }
     )

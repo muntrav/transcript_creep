@@ -107,11 +107,6 @@ export default function AuthActions() {
       <Button component={Link} href="/account" color="inherit" variant="outlined">
         Account
       </Button>
-      {state.summary?.profile.role === 'admin' ? (
-        <Button component={Link} href="/admin" color="inherit" variant="outlined">
-          Admin
-        </Button>
-      ) : null}
       <Button color="inherit" variant="contained" onClick={handleLogout}>
         Log out
       </Button>

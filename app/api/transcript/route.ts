@@ -4,6 +4,7 @@ import { getTranscript, TranscriptError } from '@/lib/transcript'
 import { getTranscriptViaSupadata } from '@/lib/transcript-supadata'
 import { consumeCredits } from '@/lib/billing'
 import { requireRequestUser } from '@/lib/request-auth'
+import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
 
 // Force this route to use Node.js runtime instead of Edge
 export const runtime = 'nodejs'
@@ -28,7 +29,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: validation.error,
+          error: toFriendlyErrorMessage(validation.error, 'INVALID_URL'),
+          code: 'INVALID_URL',
         },
         { status: 400 }
       )
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: error.message,
+          error: toFriendlyErrorMessage(error.message, error.code),
           code: error.code,
         },
         {

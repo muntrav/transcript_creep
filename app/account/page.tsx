@@ -43,6 +43,14 @@ export default async function AccountPage() {
           <Typography variant="body1" color="text.secondary">
             Manage your credits, review payment request status, and request plan activation.
           </Typography>
+          <Stack direction="row" spacing={1} sx={{ mt: 2 }} flexWrap="wrap" useFlexGap>
+            <Button component={Link} href="/" variant="contained">
+              Back to transcript tools
+            </Button>
+            <Button component={Link} href="/pricing" variant="outlined">
+              View pricing
+            </Button>
+          </Stack>
         </Box>
 
         <Grid container spacing={3}>
@@ -87,8 +95,8 @@ export default async function AccountPage() {
                       ? `Active until ${new Date(summary.activeSubscription.ends_at).toLocaleString()}`
                       : 'No paid subscription is currently active.'}
                   </Typography>
-                  <Button component={Link} href="/pricing" variant="outlined">
-                    View pricing
+                  <Button component={Link} href="/" variant="outlined">
+                    Open transcript tools
                   </Button>
                 </Stack>
               </CardContent>

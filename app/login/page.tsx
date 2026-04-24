@@ -19,6 +19,7 @@ import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
 export default function LoginPage() {
   const searchParams = useSearchParams()
   const nextPath = searchParams.get('next') || '/account'
+  const confirmed = searchParams.get('confirmed') === '1'
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -42,7 +43,7 @@ export default function LoginPage() {
         throw new Error('Sign-in completed but no session was established.')
       }
 
-      window.location.assign(nextPath)
+      window.location.assign(`/auth/post-login?next=${encodeURIComponent(nextPath)}`)
     } catch (error: any) {
       setErrorMessage(error?.message || 'Failed to sign in.')
     } finally {
@@ -64,6 +65,10 @@ export default function LoginPage() {
                 account.
               </Typography>
             </Box>
+
+            {confirmed ? (
+              <Alert severity="success">Email confirmed. You can now sign in and continue.</Alert>
+            ) : null}
 
             {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
 

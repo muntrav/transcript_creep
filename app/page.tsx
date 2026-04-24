@@ -39,6 +39,7 @@ import ThemeToggle from '@/components/ThemeToggle'
 import AuthActions from '@/components/AuthActions'
 import PageSwitcher from '@/components/PageSwitcher'
 import { groupSegmentsByInterval } from '@/lib/segment-group'
+import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
 import { validateTranscriptUrl } from '@/lib/urls'
 
 type TranscriptSegment = {
@@ -115,6 +116,10 @@ export default function HomePage() {
   const urlValidation = useMemo(() => (url ? validateTranscriptUrl(url) : { valid: false }), [url])
   const isUrlValid = urlValidation.valid
 
+  const formatApiError = (body: any, fallback: string) => {
+    return toFriendlyErrorMessage(body?.error || fallback, body?.code || null)
+  }
+
   // Show toast notification
   const showToast = (message: string, type: ToastType['type'] = 'success') => {
     setToast({ message, type })
@@ -171,7 +176,7 @@ export default function HomePage() {
       const body = await res.json()
 
       if (!res.ok) {
-        throw new Error(`${body?.error || 'Unknown error'} ${body?.code ? `(${body.code})` : ''}`)
+        throw new Error(formatApiError(body, 'We could not process that transcript request.'))
       }
 
       if (!body.data) {
@@ -182,7 +187,7 @@ export default function HomePage() {
       showToast('Transcript loaded successfully!')
     } catch (err: any) {
       console.error('Transcript fetch error:', err)
-      setError(err.message ?? String(err))
+      setError(toFriendlyErrorMessage(err.message ?? String(err)))
     } finally {
       setLoading(false)
     }
@@ -218,7 +223,7 @@ export default function HomePage() {
       const body = await res.json()
 
       if (!res.ok) {
-        throw new Error(body?.error || 'Failed to fetch bulk transcripts')
+        throw new Error(formatApiError(body, 'We could not process the bulk transcript request.'))
       }
 
       setBulkResult(body.data)
@@ -227,7 +232,9 @@ export default function HomePage() {
         body.data.stats.failed ? 'info' : 'success'
       )
     } catch (err: any) {
-      setBulkError(err.message || 'Failed to fetch bulk transcripts')
+      setBulkError(
+        toFriendlyErrorMessage(err.message || 'We could not process the bulk transcript request.')
+      )
     } finally {
       setBulkLoading(false)
     }
@@ -369,8 +376,9 @@ export default function HomePage() {
       setSummary(body.data)
       showToast('Summary ready!')
     } catch (err: any) {
-      setSummaryError(err.message || 'Failed to summarize transcript')
-      showToast(err.message || 'Failed to summarize transcript', 'error')
+      const friendly = toFriendlyErrorMessage(err.message || 'Failed to summarize transcript')
+      setSummaryError(friendly)
+      showToast(friendly, 'error')
     } finally {
       setSummaryLoading(false)
     }

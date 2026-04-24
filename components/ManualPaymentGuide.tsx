@@ -1,7 +1,12 @@
-import { Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+'use client'
+
+import { useState } from 'react'
+import { Button, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
 import type { ManualPaymentConfig } from '@/types/billing'
 
 export default function ManualPaymentGuide({ config }: { config: ManualPaymentConfig }) {
+  const [revealed, setRevealed] = useState(false)
+
   return (
     <Card elevation={3} sx={{ height: '100%' }}>
       <CardContent>
@@ -18,8 +23,23 @@ export default function ManualPaymentGuide({ config }: { config: ManualPaymentCo
               {config.destinationLabel}
             </Typography>
             <Typography variant="body1" fontWeight={700}>
-              {config.destinationValue}
+              {revealed ? config.destinationValue : config.maskedDestinationValue}
             </Typography>
+            <Typography variant="caption" color="text.secondary">
+              The full payment destination is hidden by default and only shown when requested.
+            </Typography>
+          </Stack>
+
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button variant="outlined" onClick={() => setRevealed((current) => !current)}>
+              {revealed ? 'Hide full details' : 'Show full details'}
+            </Button>
+            <Button
+              variant="text"
+              onClick={() => navigator.clipboard.writeText(config.destinationValue)}
+            >
+              Copy
+            </Button>
           </Stack>
 
           {config.contactChannel && config.contactValue ? (
