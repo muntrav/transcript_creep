@@ -11,10 +11,9 @@ function isMissingAuthSessionError(error: unknown) {
   const code = (maybeError.code || '').toLowerCase()
 
   return (
-    maybeError.status === 400 &&
-    (message.includes('auth session missing') ||
-      name.includes('authsessionmissingerror') ||
-      code.includes('auth_session_missing'))
+    message.includes('auth session missing') ||
+    name.includes('authsessionmissingerror') ||
+    code.includes('auth_session_missing')
   )
 }
 
