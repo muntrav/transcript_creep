@@ -69,3 +69,11 @@ export function getManualPaymentConfig() {
     notes: splitLines(process.env.MANUAL_PAYMENT_NOTES),
   }
 }
+
+export function getTurnstileSiteKey() {
+  return process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || null
+}
+
+export function getTurnstileSecretKey() {
+  return process.env.TURNSTILE_SECRET_KEY?.trim() || null
+}

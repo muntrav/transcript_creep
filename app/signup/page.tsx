@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import Script from 'next/script'
 import {
   Alert,
   Box,
@@ -14,54 +15,106 @@ import {
   Typography,
 } from '@mui/material'
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
+import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string
+          callback: (token: string) => void
+          'expired-callback'?: () => void
+          'error-callback'?: () => void
+        }
+      ) => string
+      reset: (widgetId?: string) => void
+    }
+  }
+}
 
 export default function SignupPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), [])
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || ''
+  const widgetRef = useRef<HTMLDivElement | null>(null)
+  const widgetIdRef = useRef<string | null>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileReady, setTurnstileReady] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (
+      !siteKey ||
+      !turnstileReady ||
+      !widgetRef.current ||
+      !window.turnstile ||
+      widgetIdRef.current
+    ) {
+      return
+    }
+
+    widgetIdRef.current = window.turnstile.render(widgetRef.current, {
+      sitekey: siteKey,
+      callback: (token: string) => setTurnstileToken(token),
+      'expired-callback': () => setTurnstileToken(null),
+      'error-callback': () => setTurnstileToken(null),
+    })
+  }, [siteKey, turnstileReady])
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
     setSubmitting(true)
     setErrorMessage(null)
-    setSuccessMessage(null)
 
     try {
-      const emailRedirectTo = `${window.location.origin}/auth/callback`
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo,
-          data: {
-            display_name: displayName,
-          },
-        },
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          password,
+          displayName,
+          turnstileToken,
+        }),
       })
 
-      if (error) throw error
-
-      if (data.session) {
-        window.location.assign('/auth/post-login')
-        return
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(body?.error || 'Failed to create account.')
       }
 
-      setSuccessMessage(
-        'Account created. Check your email to confirm the account, then continue from the link in that email.'
-      )
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) throw error
+
+      window.location.assign('/auth/post-login')
     } catch (error: any) {
-      setErrorMessage(error?.message || 'Failed to create account.')
+      setErrorMessage(toFriendlyErrorMessage(error?.message || 'Failed to create account.'))
+      if (widgetIdRef.current && window.turnstile) {
+        window.turnstile.reset(widgetIdRef.current)
+      }
+      setTurnstileToken(null)
     } finally {
       setSubmitting(false)
     }
   }
 
+  const captchaRequired = Boolean(siteKey)
+
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
+      {captchaRequired ? (
+        <Script
+          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+          strategy="afterInteractive"
+          onLoad={() => setTurnstileReady(true)}
+        />
+      ) : null}
+
       <Card elevation={3}>
         <CardContent sx={{ p: 4 }}>
           <Stack spacing={3} component="form" onSubmit={handleSubmit}>
@@ -70,11 +123,17 @@ export default function SignupPage() {
                 Create account
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Accounts are required for free monthly credits and paid plan activation.
+                Accounts are created immediately. No confirmation email is required.
               </Typography>
             </Box>
 
-            {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
+            {!captchaRequired ? (
+              <Alert severity="info">
+                CAPTCHA is not configured yet. Signup is currently protected by IP logging and rate
+                limits.
+              </Alert>
+            ) : null}
+
             {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
 
             <TextField
@@ -98,7 +157,20 @@ export default function SignupPage() {
               helperText="Use at least 6 characters."
             />
 
-            <Button type="submit" variant="contained" disabled={submitting}>
+            {captchaRequired ? (
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Complete the CAPTCHA challenge before creating your account.
+                </Typography>
+                <Box ref={widgetRef} />
+              </Box>
+            ) : null}
+
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={submitting || (captchaRequired && !turnstileToken)}
+            >
               {submitting ? 'Creating account...' : 'Create account'}
             </Button>
 
