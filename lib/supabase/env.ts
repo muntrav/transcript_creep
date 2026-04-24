@@ -71,9 +71,15 @@ export function getManualPaymentConfig() {
 }
 
 export function getTurnstileSiteKey() {
+  if (!isTurnstileEnabled()) return null
   return process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || null
 }
 
 export function getTurnstileSecretKey() {
+  if (!isTurnstileEnabled()) return null
   return process.env.TURNSTILE_SECRET_KEY?.trim() || null
+}
+
+export function isTurnstileEnabled() {
+  return process.env.VERCEL_ENV === 'production'
 }
