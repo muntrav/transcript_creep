@@ -93,8 +93,14 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: 'An unexpected error occurred',
-        code: 'UNKNOWN_ERROR',
+        error: toFriendlyErrorMessage(
+          error instanceof Error ? error.message : undefined,
+          error && typeof error === 'object' && 'code' in error ? String((error as any).code) : null
+        ),
+        code:
+          error && typeof error === 'object' && 'code' in error
+            ? String((error as any).code)
+            : 'UNKNOWN_ERROR',
       },
       { status: 500 }
     )
