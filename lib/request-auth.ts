@@ -2,6 +2,22 @@ import { NextResponse } from 'next/server'
 import { createSupabaseServerClient } from './supabase/server'
 import { getAccountSummary } from './billing'
 
+function isMissingAuthSessionError(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+
+  const maybeError = error as { name?: string; message?: string; status?: number; code?: string }
+  const message = (maybeError.message || '').toLowerCase()
+  const name = (maybeError.name || '').toLowerCase()
+  const code = (maybeError.code || '').toLowerCase()
+
+  return (
+    maybeError.status === 400 &&
+    (message.includes('auth session missing') ||
+      name.includes('authsessionmissingerror') ||
+      code.includes('auth_session_missing'))
+  )
+}
+
 export async function getRequestUser() {
   const supabase = createSupabaseServerClient()
   const {
@@ -9,7 +25,11 @@ export async function getRequestUser() {
     error,
   } = await supabase.auth.getUser()
 
-  if (error) throw error
+  if (error) {
+    if (isMissingAuthSessionError(error)) return null
+    throw error
+  }
+
   return user
 }
 
