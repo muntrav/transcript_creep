@@ -27,7 +27,8 @@ export default async function AdminPage() {
             Admin
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Review payment requests and manually activate subscriptions.
+            Review payment requests, activate subscriptions directly, and cancel active access when
+            needed.
           </Typography>
         </Box>
 

@@ -1,8 +1,19 @@
 import Link from 'next/link'
-import { Box, Card, CardContent, Container, Grid, Stack, Typography, Button } from '@mui/material'
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Container,
+  Grid,
+  Stack,
+  Typography,
+} from '@mui/material'
+import ManualPaymentGuide from '@/components/ManualPaymentGuide'
 import PaymentRequestForm from '@/components/PaymentRequestForm'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
-import { getAccountSummary, getPlans } from '@/lib/billing'
+import { getAccountSummary, getManualPaymentInstructions, getPlans } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,6 +25,7 @@ export default async function PricingPage() {
 
   const plans = await getPlans()
   const summary = user ? await getAccountSummary(user) : null
+  const paymentConfig = getManualPaymentInstructions()
 
   return (
     <Container maxWidth="lg" sx={{ py: 8 }}>
@@ -32,6 +44,7 @@ export default async function PricingPage() {
           <Grid item xs={12} md={4}>
             <Card elevation={3} sx={{ height: '100%' }}>
               <CardContent>
+                <Chip label="Default" size="small" sx={{ mb: 2 }} />
                 <Typography variant="h5" fontWeight={700} gutterBottom>
                   Free
                 </Typography>
@@ -48,6 +61,16 @@ export default async function PricingPage() {
             <Grid item xs={12} md={4} key={plan.code}>
               <Card elevation={3} sx={{ height: '100%' }}>
                 <CardContent>
+                  <Chip
+                    label={
+                      summary?.activeSubscription?.plan_code === plan.code ? 'Current plan' : 'Paid'
+                    }
+                    size="small"
+                    color={
+                      summary?.activeSubscription?.plan_code === plan.code ? 'success' : 'primary'
+                    }
+                    sx={{ mb: 2 }}
+                  />
                   <Typography variant="h5" fontWeight={700} gutterBottom>
                     {plan.name}
                   </Typography>
@@ -63,36 +86,47 @@ export default async function PricingPage() {
           ))}
         </Grid>
 
-        <Card elevation={3}>
-          <CardContent>
-            <Stack spacing={2.5}>
-              <Typography variant="h5" fontWeight={700}>
-                Manual activation
-              </Typography>
-              {!user ? (
-                <Stack spacing={2}>
-                  <Typography variant="body2" color="text.secondary">
-                    Sign in first, then submit your payment reference so an admin can activate your
-                    plan.
+        <Grid container spacing={3}>
+          <Grid item xs={12} lg={5}>
+            <ManualPaymentGuide config={paymentConfig} />
+          </Grid>
+          <Grid item xs={12} lg={7}>
+            <Card elevation={3} sx={{ height: '100%' }}>
+              <CardContent>
+                <Stack spacing={2.5}>
+                  <Typography variant="h5" fontWeight={700}>
+                    Submit payment request
                   </Typography>
-                  <Stack direction="row" spacing={1}>
-                    <Button component={Link} href="/login" variant="contained">
-                      Log in
-                    </Button>
-                    <Button component={Link} href="/signup" variant="outlined">
-                      Create account
-                    </Button>
-                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    1. Pay using the details shown. 2. Submit the exact reference used on the
+                    transfer. 3. Wait for manual review and activation.
+                  </Typography>
+                  {!user ? (
+                    <Stack spacing={2}>
+                      <Typography variant="body2" color="text.secondary">
+                        Sign in first, then submit your payment reference so an admin can activate
+                        your plan.
+                      </Typography>
+                      <Stack direction="row" spacing={1}>
+                        <Button component={Link} href="/login" variant="contained">
+                          Log in
+                        </Button>
+                        <Button component={Link} href="/signup" variant="outlined">
+                          Create account
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  ) : (
+                    <PaymentRequestForm
+                      plans={plans}
+                      defaultPlanCode={summary?.activeSubscription?.plan_code || null}
+                    />
+                  )}
                 </Stack>
-              ) : (
-                <PaymentRequestForm
-                  plans={plans}
-                  defaultPlanCode={summary?.activeSubscription?.plan_code || null}
-                />
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </Stack>
     </Container>
   )

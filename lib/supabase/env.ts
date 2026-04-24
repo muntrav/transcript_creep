@@ -32,3 +32,22 @@ export function getAdminEmails() {
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean)
 }
+
+function splitLines(value?: string | null) {
+  return (value || '')
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+}
+
+export function getManualPaymentConfig() {
+  return {
+    destinationLabel: process.env.MANUAL_PAYMENT_DESTINATION_LABEL?.trim() || 'Payment destination',
+    destinationValue:
+      process.env.MANUAL_PAYMENT_DESTINATION_VALUE?.trim() ||
+      'Configure MANUAL_PAYMENT_DESTINATION_VALUE',
+    contactChannel: process.env.MANUAL_PAYMENT_CONTACT_CHANNEL?.trim() || null,
+    contactValue: process.env.MANUAL_PAYMENT_CONTACT_VALUE?.trim() || null,
+    notes: splitLines(process.env.MANUAL_PAYMENT_NOTES),
+  }
+}

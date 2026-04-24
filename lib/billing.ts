@@ -4,13 +4,14 @@ import type { User } from '@supabase/supabase-js'
 import type {
   AccountSummary,
   AdminDashboardData,
+  ManualPaymentConfig,
   PaymentRequestRecord,
   PlanRecord,
   ProfileRecord,
   SubscriptionRecord,
 } from '@/types/billing'
 import { createSupabaseAdminClient } from './supabase/admin'
-import { getAdminEmails } from './supabase/env'
+import { getAdminEmails, getManualPaymentConfig } from './supabase/env'
 
 export const FREE_MONTHLY_CREDITS = 5
 
@@ -28,6 +29,17 @@ function buildDisplayName(user: User) {
   const raw = user.user_metadata?.display_name
   if (typeof raw === 'string' && raw.trim()) return raw.trim()
   return user.email?.split('@')[0] || 'User'
+}
+
+function normalizeProfile(profile: any): ProfileRecord {
+  return {
+    id: String(profile.id),
+    email: String(profile.email),
+    role: profile.role === 'admin' ? 'admin' : 'user',
+    display_name: profile.display_name ? String(profile.display_name) : null,
+    created_at: profile.created_at ? String(profile.created_at) : undefined,
+    updated_at: profile.updated_at ? String(profile.updated_at) : undefined,
+  }
 }
 
 export function getPeriodKey(date = new Date()) {
@@ -101,6 +113,10 @@ export async function getPlans() {
   return ((data || []) as any[]).map(normalizePlan)
 }
 
+export function getManualPaymentInstructions(): ManualPaymentConfig {
+  return getManualPaymentConfig()
+}
+
 export async function getAccountSummary(user: User): Promise<AccountSummary> {
   const admin = createSupabaseAdminClient()
 
@@ -136,7 +152,7 @@ export async function getAccountSummary(user: User): Promise<AccountSummary> {
   if (counterError) throw counterError
   if (paymentRequestsError) throw paymentRequestsError
 
-  const profile = profileData as ProfileRecord
+  const profile = normalizeProfile(profileData)
   const paymentRequests = (paymentRequestsData || []) as PaymentRequestRecord[]
   const counter = counterData as { used_credits: number } | null
   const currentPlan = activeSubscription
@@ -250,9 +266,8 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   if (subscriptionsError) throw subscriptionsError
   if (profilesError) throw profilesError
 
-  const profilesById = Object.fromEntries(
-    ((profilesData || []) as ProfileRecord[]).map((profile) => [profile.id, profile])
-  )
+  const profiles = ((profilesData || []) as any[]).map(normalizeProfile)
+  const profilesById = Object.fromEntries(profiles.map((profile) => [profile.id, profile]))
   const plansByCode = Object.fromEntries(plans.map((plan) => [plan.code, plan]))
 
   return {
@@ -262,7 +277,47 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     activeSubscriptions: (subscriptionsData || []) as SubscriptionRecord[],
     profilesById,
     plansByCode,
+    profiles,
   }
+}
+
+export async function activateSubscriptionForUser(params: {
+  userId: string
+  planCode: string
+  adminUserId: string
+  adminNote?: string
+}) {
+  const admin = createSupabaseAdminClient()
+  const startsAt = new Date()
+  const endsAt = addOneMonth(startsAt)
+
+  await admin
+    .from('subscriptions')
+    .update({
+      status: 'cancelled',
+      ends_at: startsAt.toISOString(),
+      notes: 'Superseded by manual admin activation.',
+    })
+    .eq('user_id', params.userId)
+    .eq('status', 'active')
+
+  const { data: subscription, error } = await admin
+    .from('subscriptions')
+    .insert({
+      user_id: params.userId,
+      plan_code: params.planCode,
+      status: 'active',
+      starts_at: startsAt.toISOString(),
+      ends_at: endsAt.toISOString(),
+      activated_by: params.adminUserId,
+      activated_at: startsAt.toISOString(),
+      notes: params.adminNote || 'Activated directly by admin.',
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return subscription as SubscriptionRecord
 }
 
 export async function approvePaymentRequest(params: {
@@ -285,34 +340,12 @@ export async function approvePaymentRequest(params: {
   }
 
   const startsAt = new Date()
-  const endsAt = addOneMonth(startsAt)
-
-  await admin
-    .from('subscriptions')
-    .update({
-      status: 'cancelled',
-      ends_at: startsAt.toISOString(),
-      notes: 'Superseded by a newly approved manual payment.',
-    })
-    .eq('user_id', paymentRequest.user_id)
-    .eq('status', 'active')
-
-  const { data: subscription, error: subscriptionError } = await admin
-    .from('subscriptions')
-    .insert({
-      user_id: paymentRequest.user_id,
-      plan_code: paymentRequest.plan_code,
-      status: 'active',
-      starts_at: startsAt.toISOString(),
-      ends_at: endsAt.toISOString(),
-      activated_by: params.adminUserId,
-      activated_at: startsAt.toISOString(),
-      notes: params.adminNote || null,
-    })
-    .select('*')
-    .single()
-
-  if (subscriptionError) throw subscriptionError
+  const subscription = await activateSubscriptionForUser({
+    userId: paymentRequest.user_id,
+    planCode: paymentRequest.plan_code,
+    adminUserId: params.adminUserId,
+    adminNote: params.adminNote || 'Approved from payment request.',
+  })
 
   const { error: requestUpdateError } = await admin
     .from('payment_requests')
@@ -348,4 +381,27 @@ export async function rejectPaymentRequest(params: {
     .eq('status', 'pending_review')
 
   if (error) throw error
+}
+
+export async function cancelSubscription(params: {
+  subscriptionId: string
+  adminUserId: string
+  adminNote?: string
+}) {
+  const admin = createSupabaseAdminClient()
+  const now = new Date().toISOString()
+  const { data, error } = await admin
+    .from('subscriptions')
+    .update({
+      status: 'cancelled',
+      ends_at: now,
+      notes: params.adminNote || `Cancelled by admin ${params.adminUserId}.`,
+    })
+    .eq('id', params.subscriptionId)
+    .eq('status', 'active')
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data as SubscriptionRecord
 }

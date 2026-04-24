@@ -11,6 +11,8 @@ export type ProfileRecord = {
   email: string
   role: 'user' | 'admin'
   display_name: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export type SubscriptionRecord = {
@@ -67,4 +69,13 @@ export type AdminDashboardData = {
   activeSubscriptions: SubscriptionRecord[]
   profilesById: Record<string, ProfileRecord>
   plansByCode: Record<string, PlanRecord>
+  profiles: ProfileRecord[]
+}
+
+export type ManualPaymentConfig = {
+  destinationLabel: string
+  destinationValue: string
+  contactChannel: string | null
+  contactValue: string | null
+  notes: string[]
 }

@@ -1,16 +1,20 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Alert, Box, Button, MenuItem, Stack, TextField, Typography } from '@mui/material'
 import type { PlanRecord } from '@/types/billing'
 
 export default function PaymentRequestForm({
   plans,
   defaultPlanCode,
+  onSubmitted,
 }: {
   plans: PlanRecord[]
   defaultPlanCode?: string | null
+  onSubmitted?: () => void
 }) {
+  const router = useRouter()
   const [planCode, setPlanCode] = useState(defaultPlanCode || plans[0]?.code || '')
   const [payerName, setPayerName] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
@@ -47,6 +51,8 @@ export default function PaymentRequestForm({
       )
       setPaymentReference('')
       setNote('')
+      router.refresh()
+      onSubmitted?.()
     } catch (error: any) {
       setErrorMessage(error?.message || 'Failed to submit payment request.')
     } finally {
@@ -84,6 +90,7 @@ export default function PaymentRequestForm({
           value={payerName}
           onChange={(event) => setPayerName(event.target.value)}
           required
+          helperText="Use the same name that appears on the payment receipt."
         />
 
         <TextField
