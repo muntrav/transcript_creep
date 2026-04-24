@@ -28,6 +28,8 @@ export default async function AccountPage() {
   if (!user) redirect('/login?next=/account')
 
   const summary = await getAccountSummary(user)
+  if (summary.profile.role === 'admin') redirect('/admin')
+
   const paymentConfig = getManualPaymentInstructions()
   const currentPlan = summary.activeSubscription
     ? summary.plans.find((plan) => plan.code === summary.activeSubscription?.plan_code) || null

@@ -124,29 +124,6 @@ export async function POST(request: Request) {
       inputs = parsed.urls.map((sourceUrl) => ({ sourceUrl }))
     }
 
-    const creditResult = await consumeCredits({
-      userId: authResult.user.id,
-      units: inputs.length,
-      kind: 'bulk',
-      metadata: {
-        requestType: playlistUrl ? 'playlist' : 'urls',
-        requestedItems: inputs.length,
-      },
-    })
-
-    if (!creditResult?.allowed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Monthly transcript limit reached for this bulk request. Visit pricing to request a paid plan.',
-          code: 'QUOTA_EXCEEDED',
-          data: creditResult,
-        },
-        { status: 402 }
-      )
-    }
-
     const items = await mapWithConcurrency(inputs, 3, async (input, index) => {
       try {
         const result = await getTranscript(input.sourceUrl)
@@ -177,6 +154,33 @@ export async function POST(request: Request) {
 
     const succeeded = items.filter((item) => item.success).length
     const failed = items.length - succeeded
+
+    if (succeeded > 0) {
+      const creditResult = await consumeCredits({
+        userId: authResult.user.id,
+        units: succeeded,
+        kind: 'bulk',
+        metadata: {
+          requestType: playlistUrl ? 'playlist' : 'urls',
+          requestedItems: inputs.length,
+          succeededItems: succeeded,
+          failedItems: failed,
+        },
+      })
+
+      if (!creditResult?.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Monthly transcript limit reached for this bulk request. Visit pricing to request a paid plan.',
+            code: 'QUOTA_EXCEEDED',
+            data: creditResult,
+          },
+          { status: 402 }
+        )
+      }
+    }
 
     return NextResponse.json({
       success: true,

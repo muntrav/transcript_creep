@@ -17,7 +17,7 @@ type TranscriptRequest = {
   videoUrl?: string
 }
 
-const ANON_TRIAL_COOKIE = 'anon_transcript_trial_used'
+const ANON_TRIAL_COOKIE = 'anon_transcript_trial_used_v2'
 
 export async function POST(request: Request) {
   try {
@@ -38,26 +38,7 @@ export async function POST(request: Request) {
       )
     }
 
-    if (user) {
-      const creditResult = await consumeCredits({
-        userId: user.id,
-        units: 1,
-        kind: 'single',
-        metadata: { sourceUrl: url },
-      })
-
-      if (!creditResult?.allowed) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Monthly transcript limit reached. Visit pricing to request a paid plan.',
-            code: 'QUOTA_EXCEEDED',
-            data: creditResult,
-          },
-          { status: 402 }
-        )
-      }
-    } else if (cookies().get(ANON_TRIAL_COOKIE)?.value === '1') {
+    if (!user && cookies().get(ANON_TRIAL_COOKIE)?.value === '1') {
       return NextResponse.json(
         {
           success: false,
@@ -82,6 +63,27 @@ export async function POST(request: Request) {
       provider: result.provider,
     })
 
+    if (user) {
+      const creditResult = await consumeCredits({
+        userId: user.id,
+        units: 1,
+        kind: 'single',
+        metadata: { sourceUrl: url },
+      })
+
+      if (!creditResult?.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Monthly transcript limit reached. Visit pricing to request a paid plan.',
+            code: 'QUOTA_EXCEEDED',
+            data: creditResult,
+          },
+          { status: 402 }
+        )
+      }
+    }
+
     const response = NextResponse.json({
       success: true,
       data: result,
@@ -93,7 +95,6 @@ export async function POST(request: Request) {
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         path: '/',
-        maxAge: 60 * 60 * 24 * 365,
       })
     }
 
