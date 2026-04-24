@@ -64,12 +64,29 @@ export type AccountSummary = {
   remainingCredits: number
 }
 
+export type ProviderQuotaSnapshotRecord = {
+  provider: string
+  requests_limit: number | null
+  requests_remaining: number | null
+  requests_reset: string | null
+  hard_limit_limit: number | null
+  hard_limit_remaining: number | null
+  hard_limit_reset: string | null
+  rapidapi_region: string | null
+  rapidapi_version: string | null
+  rapidapi_request_id: string | null
+  observed_at: string
+  created_at: string
+  updated_at: string
+}
+
 export type AdminDashboardData = {
   pendingPaymentRequests: PaymentRequestRecord[]
   activeSubscriptions: SubscriptionRecord[]
   profilesById: Record<string, ProfileRecord>
   plansByCode: Record<string, PlanRecord>
   profiles: ProfileRecord[]
+  providerQuotaSnapshot: ProviderQuotaSnapshotRecord | null
   freeUsers: {
     profile: ProfileRecord
     usedCredits: number

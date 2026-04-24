@@ -8,6 +8,7 @@ import type {
   PaymentRequestRecord,
   PlanRecord,
   ProfileRecord,
+  ProviderQuotaSnapshotRecord,
   SubscriptionRecord,
 } from '@/types/billing'
 import { createSupabaseAdminClient } from './supabase/admin'
@@ -39,6 +40,36 @@ function normalizeProfile(profile: any): ProfileRecord {
     display_name: profile.display_name ? String(profile.display_name) : null,
     created_at: profile.created_at ? String(profile.created_at) : undefined,
     updated_at: profile.updated_at ? String(profile.updated_at) : undefined,
+  }
+}
+
+function normalizeProviderQuotaSnapshot(snapshot: any): ProviderQuotaSnapshotRecord {
+  return {
+    provider: String(snapshot.provider),
+    requests_limit:
+      snapshot.requests_limit === null || snapshot.requests_limit === undefined
+        ? null
+        : Number(snapshot.requests_limit),
+    requests_remaining:
+      snapshot.requests_remaining === null || snapshot.requests_remaining === undefined
+        ? null
+        : Number(snapshot.requests_remaining),
+    requests_reset: snapshot.requests_reset ? String(snapshot.requests_reset) : null,
+    hard_limit_limit:
+      snapshot.hard_limit_limit === null || snapshot.hard_limit_limit === undefined
+        ? null
+        : Number(snapshot.hard_limit_limit),
+    hard_limit_remaining:
+      snapshot.hard_limit_remaining === null || snapshot.hard_limit_remaining === undefined
+        ? null
+        : Number(snapshot.hard_limit_remaining),
+    hard_limit_reset: snapshot.hard_limit_reset ? String(snapshot.hard_limit_reset) : null,
+    rapidapi_region: snapshot.rapidapi_region ? String(snapshot.rapidapi_region) : null,
+    rapidapi_version: snapshot.rapidapi_version ? String(snapshot.rapidapi_version) : null,
+    rapidapi_request_id: snapshot.rapidapi_request_id ? String(snapshot.rapidapi_request_id) : null,
+    observed_at: String(snapshot.observed_at),
+    created_at: String(snapshot.created_at),
+    updated_at: String(snapshot.updated_at),
   }
 }
 
@@ -251,6 +282,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     { data: subscriptionsData, error: subscriptionsError },
     { data: profilesData, error: profilesError },
     { data: countersData, error: countersError },
+    { data: providerQuotaData, error: providerQuotaError },
     plans,
   ] = await Promise.all([
     admin.from('payment_requests').select('*').order('created_at', { ascending: false }).limit(50),
@@ -262,6 +294,12 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       .limit(50),
     admin.from('user_profiles').select('*').limit(500),
     admin.from('monthly_usage_counters').select('*').eq('period_key', periodKey).limit(500),
+    admin
+      .from('provider_quota_snapshots')
+      .select('*')
+      .order('observed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
     getPlans(),
   ])
 
@@ -269,6 +307,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   if (subscriptionsError) throw subscriptionsError
   if (profilesError) throw profilesError
   if (countersError) throw countersError
+  if (providerQuotaError) throw providerQuotaError
 
   const profiles = ((profilesData || []) as any[]).map(normalizeProfile)
   const profilesById = Object.fromEntries(profiles.map((profile) => [profile.id, profile]))
@@ -301,8 +340,32 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     profilesById,
     plansByCode,
     profiles,
+    providerQuotaSnapshot: providerQuotaData
+      ? normalizeProviderQuotaSnapshot(providerQuotaData)
+      : null,
     freeUsers,
   }
+}
+
+export async function recordProviderQuotaSnapshot(snapshot: {
+  provider: string
+  requests_limit: number | null
+  requests_remaining: number | null
+  requests_reset: string | null
+  hard_limit_limit: number | null
+  hard_limit_remaining: number | null
+  hard_limit_reset: string | null
+  rapidapi_region: string | null
+  rapidapi_version: string | null
+  rapidapi_request_id: string | null
+  observed_at: string
+}) {
+  const admin = createSupabaseAdminClient()
+  const { error } = await admin.from('provider_quota_snapshots').upsert(snapshot, {
+    onConflict: 'provider',
+  })
+
+  if (error) throw error
 }
 
 export async function activateSubscriptionForUser(params: {

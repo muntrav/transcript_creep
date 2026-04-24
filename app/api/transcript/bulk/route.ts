@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { parseBulkUrls, MAX_BULK_ITEMS } from '@/lib/bulk-input'
-import { consumeCredits } from '@/lib/billing'
+import { consumeCredits, recordProviderQuotaSnapshot } from '@/lib/billing'
 import { makeTranscriptFileName } from '@/lib/file-names'
 import { requireRequestUser } from '@/lib/request-auth'
 import { getTranscript } from '@/lib/transcript'
@@ -127,6 +127,11 @@ export async function POST(request: Request) {
     const items = await mapWithConcurrency(inputs, 3, async (input, index) => {
       try {
         const result = await getTranscript(input.sourceUrl)
+        if (result.providerQuota) {
+          await recordProviderQuotaSnapshot(result.providerQuota).catch((snapshotError) => {
+            console.error('Failed to record provider quota snapshot:', snapshotError)
+          })
+        }
         const title = input.title || `video-${result.videoId || index + 1}`
         const videoId = result.videoId
 

@@ -16,6 +16,19 @@ export type TranscriptResult = {
   language?: string
   sourceUrl?: string
   provider?: string
+  providerQuota?: {
+    provider: string
+    requests_limit: number | null
+    requests_remaining: number | null
+    requests_reset: string | null
+    hard_limit_limit: number | null
+    hard_limit_remaining: number | null
+    hard_limit_reset: string | null
+    rapidapi_region: string | null
+    rapidapi_version: string | null
+    rapidapi_request_id: string | null
+    observed_at: string
+  }
 }
 
 export class TranscriptError extends Error {

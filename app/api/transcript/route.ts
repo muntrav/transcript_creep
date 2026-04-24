@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { validateTranscriptUrl } from '@/lib/urls'
 import { getTranscript, TranscriptError } from '@/lib/transcript'
 import { getTranscriptViaSupadata } from '@/lib/transcript-supadata'
-import { consumeCredits } from '@/lib/billing'
+import { consumeCredits, recordProviderQuotaSnapshot } from '@/lib/billing'
 import { getRequestUser } from '@/lib/request-auth'
 import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
 
@@ -54,6 +54,13 @@ export async function POST(request: Request) {
       validation.source === 'youtube'
         ? await getTranscript(url)
         : await getTranscriptViaSupadata(url)
+
+    if (result.providerQuota) {
+      await recordProviderQuotaSnapshot(result.providerQuota).catch((snapshotError) => {
+        console.error('Failed to record provider quota snapshot:', snapshotError)
+      })
+    }
+
     result.sourceUrl = url
     result.provider = validation.source || result.provider
     console.log('Successfully fetched transcript:', {

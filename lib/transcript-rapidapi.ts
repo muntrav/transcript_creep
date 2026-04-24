@@ -69,6 +69,32 @@ type RapidApiTranscriptResponse = {
   transcript?: RapidApiTranscriptItem[]
 }
 
+function parseOptionalInt(value: string | null): number | null {
+  if (!value) return null
+  const parsed = Number.parseInt(value, 10)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function extractRapidApiQuota(headers: Headers) {
+  return {
+    provider: 'rapidapi-youtube-transcript3',
+    requests_limit: parseOptionalInt(headers.get('X-RateLimit-Requests-Limit')),
+    requests_remaining: parseOptionalInt(headers.get('X-RateLimit-Requests-Remaining')),
+    requests_reset: headers.get('X-RateLimit-Requests-Reset'),
+    hard_limit_limit: parseOptionalInt(
+      headers.get('X-RateLimit-rapid-free-plans-hard-limit-Limit')
+    ),
+    hard_limit_remaining: parseOptionalInt(
+      headers.get('X-RateLimit-rapid-free-plans-hard-limit-Remaining')
+    ),
+    hard_limit_reset: headers.get('X-RateLimit-rapid-free-plans-hard-limit-Reset'),
+    rapidapi_region: headers.get('X-RapidAPI-Region'),
+    rapidapi_version: headers.get('X-RapidAPI-Version'),
+    rapidapi_request_id: headers.get('X-RapidAPI-Request-Id'),
+    observed_at: new Date().toISOString(),
+  }
+}
+
 function toMilliseconds(value: string | number | undefined): number {
   if (typeof value === 'number') return Math.round(value * 1000)
   if (typeof value === 'string' && value.trim()) {
@@ -119,6 +145,7 @@ export async function getTranscriptViaRapidAPI(videoId: string): Promise<Transcr
         'x-rapidapi-key': apiKey,
       },
     })
+    const providerQuota = extractRapidApiQuota(response.headers)
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
@@ -186,6 +213,7 @@ export async function getTranscriptViaRapidAPI(videoId: string): Promise<Transcr
       segments,
       videoId,
       language,
+      providerQuota,
     }
   } catch (error: any) {
     // If it's already a TranscriptError, rethrow it

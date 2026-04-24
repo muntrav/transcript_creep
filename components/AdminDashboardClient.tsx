@@ -27,6 +27,11 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleString()
 }
 
+function formatQuotaCount(value: number | null) {
+  if (value === null || Number.isNaN(value)) return 'n/a'
+  return value.toLocaleString()
+}
+
 function statusTone(status: string): 'default' | 'warning' | 'success' | 'error' {
   if (status === 'pending_review') return 'warning'
   if (status === 'approved' || status === 'active') return 'success'
@@ -260,6 +265,107 @@ export default function AdminDashboardClient({ initialData }: { initialData: Adm
           </Card>
         </Grid>
       </Grid>
+
+      <Card elevation={3}>
+        <CardContent>
+          <Stack spacing={2}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+              spacing={1}
+            >
+              <Stack spacing={0.5}>
+                <Typography variant="h6" fontWeight={700}>
+                  Provider quota snapshot
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Cached from real transcript requests. No extra provider call is made to show this.
+                </Typography>
+              </Stack>
+              <Chip
+                label={data.providerQuotaSnapshot?.provider || 'No provider data yet'}
+                size="small"
+                color={data.providerQuotaSnapshot ? 'primary' : 'default'}
+              />
+            </Stack>
+
+            {data.providerQuotaSnapshot ? (
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Request bucket
+                    </Typography>
+                    <Typography variant="h5" fontWeight={800}>
+                      {formatQuotaCount(data.providerQuotaSnapshot.requests_remaining)} /{' '}
+                      {formatQuotaCount(data.providerQuotaSnapshot.requests_limit)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Hard plan bucket
+                    </Typography>
+                    <Typography variant="h5" fontWeight={800}>
+                      {formatQuotaCount(data.providerQuotaSnapshot.hard_limit_remaining)} /{' '}
+                      {formatQuotaCount(data.providerQuotaSnapshot.hard_limit_limit)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Last observed
+                    </Typography>
+                    <Typography variant="body1" fontWeight={700}>
+                      {formatDate(data.providerQuotaSnapshot.observed_at)}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Paper variant="outlined" sx={{ p: 2, borderRadius: 3 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Region / version
+                    </Typography>
+                    <Typography variant="body1" fontWeight={700}>
+                      {data.providerQuotaSnapshot.rapidapi_region || 'n/a'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {data.providerQuotaSnapshot.rapidapi_version || 'n/a'}
+                    </Typography>
+                  </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Reset markers
+                  </Typography>
+                  <Typography variant="body2">
+                    Request bucket: {data.providerQuotaSnapshot.requests_reset || 'n/a'}
+                  </Typography>
+                  <Typography variant="body2">
+                    Hard bucket: {data.providerQuotaSnapshot.hard_limit_reset || 'n/a'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Last provider request id
+                  </Typography>
+                  <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                    {data.providerQuotaSnapshot.rapidapi_request_id || 'n/a'}
+                  </Typography>
+                </Grid>
+              </Grid>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No provider quota snapshot yet. It will appear after the next successful
+                RapidAPI-backed transcript request.
+              </Typography>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Grid container spacing={3}>
         <Grid item xs={12} lg={7}>
