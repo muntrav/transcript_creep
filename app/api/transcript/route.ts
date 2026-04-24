@@ -1,9 +1,10 @@
+import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { validateTranscriptUrl } from '@/lib/urls'
 import { getTranscript, TranscriptError } from '@/lib/transcript'
 import { getTranscriptViaSupadata } from '@/lib/transcript-supadata'
 import { consumeCredits } from '@/lib/billing'
-import { requireRequestUser } from '@/lib/request-auth'
+import { getRequestUser } from '@/lib/request-auth'
 import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
 
 // Force this route to use Node.js runtime instead of Edge
@@ -16,10 +17,11 @@ type TranscriptRequest = {
   videoUrl?: string
 }
 
+const ANON_TRIAL_COOKIE = 'anon_transcript_trial_used'
+
 export async function POST(request: Request) {
   try {
-    const authResult = await requireRequestUser()
-    if (!authResult.user) return authResult.response
+    const user = await getRequestUser()
 
     const body: TranscriptRequest = await request.json()
     const url = body.videoUrl ?? ''
@@ -36,22 +38,33 @@ export async function POST(request: Request) {
       )
     }
 
-    const creditResult = await consumeCredits({
-      userId: authResult.user.id,
-      units: 1,
-      kind: 'single',
-      metadata: { sourceUrl: url },
-    })
+    if (user) {
+      const creditResult = await consumeCredits({
+        userId: user.id,
+        units: 1,
+        kind: 'single',
+        metadata: { sourceUrl: url },
+      })
 
-    if (!creditResult?.allowed) {
+      if (!creditResult?.allowed) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Monthly transcript limit reached. Visit pricing to request a paid plan.',
+            code: 'QUOTA_EXCEEDED',
+            data: creditResult,
+          },
+          { status: 402 }
+        )
+      }
+    } else if (cookies().get(ANON_TRIAL_COOKIE)?.value === '1') {
       return NextResponse.json(
         {
           success: false,
-          error: 'Monthly transcript limit reached. Visit pricing to request a paid plan.',
-          code: 'QUOTA_EXCEEDED',
-          data: creditResult,
+          error: 'Sign in to continue.',
+          code: 'AUTH_REQUIRED',
         },
-        { status: 402 }
+        { status: 401 }
       )
     }
 
@@ -69,10 +82,22 @@ export async function POST(request: Request) {
       provider: result.provider,
     })
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: result,
     })
+
+    if (!user) {
+      response.cookies.set(ANON_TRIAL_COOKIE, '1', {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 365,
+      })
+    }
+
+    return response
   } catch (error: unknown) {
     // Handle known transcript errors
     if (error instanceof TranscriptError) {

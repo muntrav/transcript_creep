@@ -70,6 +70,11 @@ export type AdminDashboardData = {
   profilesById: Record<string, ProfileRecord>
   plansByCode: Record<string, PlanRecord>
   profiles: ProfileRecord[]
+  freeUsers: {
+    profile: ProfileRecord
+    usedCredits: number
+    remainingCredits: number
+  }[]
 }
 
 export type ManualPaymentConfig = {

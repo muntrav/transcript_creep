@@ -244,11 +244,13 @@ function addOneMonth(start: Date) {
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const admin = createSupabaseAdminClient()
+  const periodKey = getPeriodKey()
 
   const [
     { data: requestsData, error: requestsError },
     { data: subscriptionsData, error: subscriptionsError },
     { data: profilesData, error: profilesError },
+    { data: countersData, error: countersError },
     plans,
   ] = await Promise.all([
     admin.from('payment_requests').select('*').order('created_at', { ascending: false }).limit(50),
@@ -259,25 +261,47 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
       .order('created_at', { ascending: false })
       .limit(50),
     admin.from('user_profiles').select('*').limit(500),
+    admin.from('monthly_usage_counters').select('*').eq('period_key', periodKey).limit(500),
     getPlans(),
   ])
 
   if (requestsError) throw requestsError
   if (subscriptionsError) throw subscriptionsError
   if (profilesError) throw profilesError
+  if (countersError) throw countersError
 
   const profiles = ((profilesData || []) as any[]).map(normalizeProfile)
   const profilesById = Object.fromEntries(profiles.map((profile) => [profile.id, profile]))
   const plansByCode = Object.fromEntries(plans.map((plan) => [plan.code, plan]))
+  const activeSubscriptions = (subscriptionsData || []) as SubscriptionRecord[]
+  const activeUserIds = new Set(activeSubscriptions.map((subscription) => subscription.user_id))
+  const countersByUserId = Object.fromEntries(
+    ((countersData || []) as { user_id: string; used_credits: number }[]).map((counter) => [
+      counter.user_id,
+      counter.used_credits,
+    ])
+  )
+  const freeUsers = profiles
+    .filter((profile) => !activeUserIds.has(profile.id))
+    .map((profile) => {
+      const usedCredits = Number(countersByUserId[profile.id] || 0)
+      return {
+        profile,
+        usedCredits,
+        remainingCredits: Math.max(FREE_MONTHLY_CREDITS - usedCredits, 0),
+      }
+    })
+    .sort((a, b) => a.profile.email.localeCompare(b.profile.email))
 
   return {
     pendingPaymentRequests: ((requestsData || []) as PaymentRequestRecord[]).filter(
       (request) => request.status === 'pending_review'
     ),
-    activeSubscriptions: (subscriptionsData || []) as SubscriptionRecord[],
+    activeSubscriptions,
     profilesById,
     plansByCode,
     profiles,
+    freeUsers,
   }
 }
 

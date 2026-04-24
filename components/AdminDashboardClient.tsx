@@ -203,7 +203,7 @@ export default function AdminDashboardClient({ initialData }: { initialData: Adm
       {message ? <Alert severity={message.type}>{message.text}</Alert> : null}
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card elevation={3}>
             <CardContent>
               <Stack spacing={1}>
@@ -217,7 +217,7 @@ export default function AdminDashboardClient({ initialData }: { initialData: Adm
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card elevation={3}>
             <CardContent>
               <Stack spacing={1}>
@@ -231,7 +231,7 @@ export default function AdminDashboardClient({ initialData }: { initialData: Adm
             </CardContent>
           </Card>
         </Grid>
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card elevation={3}>
             <CardContent>
               <Stack spacing={1}>
@@ -240,6 +240,20 @@ export default function AdminDashboardClient({ initialData }: { initialData: Adm
                 </Typography>
                 <Typography variant="h4" fontWeight={800}>
                   {data.profiles.length}
+                </Typography>
+              </Stack>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={3}>
+          <Card elevation={3}>
+            <CardContent>
+              <Stack spacing={1}>
+                <Typography variant="body2" color="text.secondary">
+                  Free plan users
+                </Typography>
+                <Typography variant="h4" fontWeight={800}>
+                  {data.freeUsers.length}
                 </Typography>
               </Stack>
             </CardContent>
@@ -434,6 +448,43 @@ export default function AdminDashboardClient({ initialData }: { initialData: Adm
             ) : (
               <Typography variant="body2" color="text.secondary">
                 No active subscriptions yet.
+              </Typography>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card elevation={3}>
+        <CardContent>
+          <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+            Free plan users
+          </Typography>
+          <Stack spacing={2}>
+            {data.freeUsers.length ? (
+              data.freeUsers.map(({ profile, usedCredits, remainingCredits }) => (
+                <Paper key={profile.id} variant="outlined" sx={{ p: 2.5, borderRadius: 3 }}>
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    justifyContent="space-between"
+                    spacing={1.5}
+                  >
+                    <Stack spacing={0.5}>
+                      <Typography fontWeight={700}>{renderProfile(profile, profile.id)}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Role: {profile.role}
+                      </Typography>
+                    </Stack>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      <Chip label="Free" size="small" />
+                      <Chip label={`Used: ${usedCredits}/${5}`} size="small" />
+                      <Chip label={`Remaining: ${remainingCredits}`} size="small" color="primary" />
+                    </Stack>
+                  </Stack>
+                </Paper>
+              ))
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                No users are currently on the free plan.
               </Typography>
             )}
           </Stack>

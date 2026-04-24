@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { Box, Container, Stack, Typography } from '@mui/material'
 import AdminDashboardClient from '@/components/AdminDashboardClient'
+import AdminPageActions from '@/components/AdminPageActions'
 import { getAccountSummary, getAdminDashboardData } from '@/lib/billing'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
@@ -30,6 +31,7 @@ export default async function AdminPage() {
             Review payment requests, activate subscriptions directly, and cancel active access when
             needed.
           </Typography>
+          <AdminPageActions />
         </Box>
 
         <AdminDashboardClient initialData={dashboardData} />

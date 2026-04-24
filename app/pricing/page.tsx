@@ -38,12 +38,33 @@ export default async function PricingPage() {
             Free accounts get 5 transcript credits per month. Paid plans are activated manually
             after you submit your payment reference.
           </Typography>
+          <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mt: 2.5 }}>
+            <Button component={Link} href="/" variant="outlined">
+              Back to tools
+            </Button>
+            {!user ? (
+              <>
+                <Button component={Link} href="/login?next=/pricing" variant="contained">
+                  Log in
+                </Button>
+                <Button component={Link} href="/signup?next=/pricing" variant="outlined">
+                  Create account
+                </Button>
+              </>
+            ) : (
+              <Button component={Link} href="/account" variant="contained">
+                Go to account
+              </Button>
+            )}
+          </Stack>
         </Box>
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
             <Card elevation={3} sx={{ height: '100%' }}>
-              <CardContent>
+              <CardContent
+                sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}
+              >
                 <Chip label="Default" size="small" sx={{ mb: 2 }} />
                 <Typography variant="h5" fontWeight={700} gutterBottom>
                   Free
@@ -54,13 +75,26 @@ export default async function PricingPage() {
                 <Typography variant="body2" color="text.secondary">
                   5 credits per month
                 </Typography>
+                <Box sx={{ mt: 'auto' }}>
+                  {!user ? (
+                    <Button component={Link} href="/signup?next=/" variant="contained" fullWidth>
+                      Start free
+                    </Button>
+                  ) : (
+                    <Button component={Link} href="/" variant="outlined" fullWidth>
+                      Use tools
+                    </Button>
+                  )}
+                </Box>
               </CardContent>
             </Card>
           </Grid>
           {plans.map((plan) => (
             <Grid item xs={12} md={4} key={plan.code}>
               <Card elevation={3} sx={{ height: '100%' }}>
-                <CardContent>
+                <CardContent
+                  sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%' }}
+                >
                   <Chip
                     label={
                       summary?.activeSubscription?.plan_code === plan.code ? 'Current plan' : 'Paid'
@@ -80,6 +114,28 @@ export default async function PricingPage() {
                   <Typography variant="body2" color="text.secondary">
                     {plan.monthly_credit_limit} credits per month
                   </Typography>
+                  <Box sx={{ mt: 'auto' }}>
+                    {!user ? (
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          component={Link}
+                          href="/login?next=/pricing"
+                          variant="outlined"
+                          fullWidth
+                        >
+                          Log in
+                        </Button>
+                        <Button
+                          component={Link}
+                          href="/signup?next=/pricing"
+                          variant="contained"
+                          fullWidth
+                        >
+                          Choose plan
+                        </Button>
+                      </Stack>
+                    ) : null}
+                  </Box>
                 </CardContent>
               </Card>
             </Grid>

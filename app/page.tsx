@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import {
   Container,
   Box,
@@ -38,6 +39,7 @@ import {
 import ThemeToggle from '@/components/ThemeToggle'
 import AuthActions from '@/components/AuthActions'
 import PageSwitcher from '@/components/PageSwitcher'
+import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
 import { groupSegmentsByInterval } from '@/lib/segment-group'
 import { toFriendlyErrorMessage } from '@/lib/user-facing-errors'
 import { validateTranscriptUrl } from '@/lib/urls'
@@ -96,6 +98,8 @@ type BulkTranscriptData = {
 }
 
 export default function HomePage() {
+  const router = useRouter()
+  const supabase = useMemo(() => createSupabaseBrowserClient(), [])
   const [mode, setMode] = useState<'single' | 'bulk'>('single')
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
@@ -112,12 +116,44 @@ export default function HomePage() {
   const [bulkLoading, setBulkLoading] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
   const [bulkResult, setBulkResult] = useState<BulkTranscriptData | null>(null)
+  const [hasUser, setHasUser] = useState(false)
 
   const urlValidation = useMemo(() => (url ? validateTranscriptUrl(url) : { valid: false }), [url])
   const isUrlValid = urlValidation.valid
 
   const formatApiError = (body: any, fallback: string) => {
     return toFriendlyErrorMessage(body?.error || fallback, body?.code || null)
+  }
+
+  React.useEffect(() => {
+    let active = true
+
+    async function loadAuthState() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!active) return
+      setHasUser(Boolean(user))
+    }
+
+    void loadAuthState()
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return
+      setHasUser(Boolean(session?.user))
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [supabase])
+
+  const redirectToAuth = () => {
+    router.push('/login?next=/')
   }
 
   // Show toast notification
@@ -175,6 +211,11 @@ export default function HomePage() {
       })
       const body = await res.json()
 
+      if (res.status === 401 && body?.code === 'AUTH_REQUIRED' && !hasUser) {
+        redirectToAuth()
+        return
+      }
+
       if (!res.ok) {
         throw new Error(formatApiError(body, 'We could not process that transcript request.'))
       }
@@ -221,6 +262,11 @@ export default function HomePage() {
       })
 
       const body = await res.json()
+
+      if (res.status === 401 && body?.code === 'AUTH_REQUIRED' && !hasUser) {
+        redirectToAuth()
+        return
+      }
 
       if (!res.ok) {
         throw new Error(formatApiError(body, 'We could not process the bulk transcript request.'))
